@@ -15,6 +15,7 @@ rsync -a --delete \
   --exclude 'serve.py' --exclude 'bin-sync-site.sh' \
   --exclude 'images-of-fire-arcade/' --exclude 'untitled folder/' \
   --exclude '.DS_Store' --exclude '.placeholder-backup/' \
+  --exclude '_*' \
   "$SRC/" "$DEST/"
 
 echo "staged into $DEST"

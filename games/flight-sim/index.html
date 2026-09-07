@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Schappi's Flight Simulator</title>
+<meta name="description" content="Fly a light aircraft over procedurally generated terrain, in your browser.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Schappi Studios">
+<meta property="og:title" content="Schappi's Flight Simulator">
+<meta property="og:description" content="Fly a light aircraft over procedurally generated terrain, in your browser.">
+<meta property="og:url" content="https://schappistudios.com/games/flight-sim/">
+<meta property="og:image" content="https://schappistudios.com/assets/img/og-flight-sim.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -666,11 +676,13 @@ canvas { display: block; }
   rtip.position.set(6.6, 0, 0.2);
   planeGroup.add(rtip);
 
-  // Nav light point lights
-  const navLightL = new THREE.PointLight(0xff0000, 2, 15);
+  // Nav light point lights. Kept dim and short-range on purpose: at dusk the
+  // old intensity of 2 over 15 metres reached the whole airframe and painted
+  // the fuselage red and green. Real ones glow, they do not floodlight.
+  const navLightL = new THREE.PointLight(0xff0000, 0.55, 5);
   navLightL.position.set(-6.6, 0, 0.2);
   planeGroup.add(navLightL);
-  const navLightR = new THREE.PointLight(0x00ff00, 2, 15);
+  const navLightR = new THREE.PointLight(0x00ff00, 0.55, 5);
   navLightR.position.set(6.6, 0, 0.2);
   planeGroup.add(navLightR);
 
@@ -679,7 +691,7 @@ canvas { display: block; }
   const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), strobeMat);
   strobe.position.set(0, 0.5, 3.2);
   planeGroup.add(strobe);
-  const strobeLight = new THREE.PointLight(0xffffff, 3, 25);
+  const strobeLight = new THREE.PointLight(0xffffff, 1.2, 10);
   strobeLight.position.set(0, 0.5, 3.2);
   planeGroup.add(strobeLight);
 
@@ -1074,7 +1086,7 @@ canvas { display: block; }
     // Strobe blink
     const strobeOn = Math.sin(elapsed * 8) > 0.8;
     strobe.material.emissiveIntensity = strobeOn ? 2 : 0;
-    strobeLight.intensity = strobeOn ? 5 : 0;
+    strobeLight.intensity = strobeOn ? 2.2 : 0;
 
     // Flaps indicator
     document.getElementById('flaps-indicator').style.display = flaps ? 'block' : 'none';
