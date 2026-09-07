@@ -274,7 +274,7 @@
      API. Set POLL_ENDPOINT to switch it on; while it is empty, or if the
      request fails, the section stays hidden and the page is simply without
      it. See docs/poll-api.md for the API this expects. */
-  var POLL_ENDPOINT = "";
+  var POLL_ENDPOINT = "https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec";
 
   var poll = document.querySelector("[data-poll]");
   if (poll && POLL_ENDPOINT) {
