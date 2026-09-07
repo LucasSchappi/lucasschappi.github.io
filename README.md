@@ -13,22 +13,32 @@ files — relative paths and the flight-sim iframe behave differently over
 
 ## Files
 
-    index.html              Home
-    games.html              Games + the playable flight sim + software
-    about.html              Studio
-    contact.html            Contact
-    privacy.html            Privacy + terms
+    index.html                   Home, served at /
+    games/index.html             /games
+    about/index.html             /about
+    contact/index.html           /contact
+    privacy/index.html           /privacy
+    home/index.html              /home - a redirect to /, nothing else
 
-    games/flight-sim.html   The 3D flight sim. Standalone, self-contained.
-    games/god-sim/          God Sim, built from ../god-sim (see below).
+    games/flight-sim/index.html   /games/flight-sim. Standalone, self-contained.
+    games/god-sim/                /games/god-sim, built from ../god-sim (below).
 
-    assets/css/site.css     Every visual decision on the site
-    assets/js/site.js       Nav, playable embeds, video embeds, lightbox, forms
-    assets/img/             favicon.svg, screenshots
+    assets/css/site.css           Every visual decision on the site
+    assets/js/site.js             Nav, playable embeds, video, lightbox, forms
+    assets/img/                   favicon.svg, screenshots
+
+Every page except the home page lives in a directory of its own and is called
+`index.html`, so the URL is the folder name with no extension: `/games`, not
+`/games.html`. Any static host serves it this way with no configuration.
+
+Because the pages sit at different depths, **all internal links and asset paths
+are root-relative** (`/assets/css/site.css`, `/games/`). A relative path would
+resolve against the folder the page is in and break. The repo is
+`lucasschappi.github.io`, a user site, so the site root really is `/`.
 
 The header and footer are duplicated in each page rather than templated. There
-are six pages; a change to the nav is six edits. That is cheaper than adding a
-build step.
+are five real pages; a change to the nav is five edits. That is cheaper than
+adding a build step.
 
 ## The theme
 
@@ -61,15 +71,15 @@ as a yellow highlight so you can spot it on the page. Delete the wrapping
 
 Still outstanding:
 
-    about.html    [one line summary]
-    contact.html  [expected response time]
-    games.html    [one line introducing the work]
+    about/       [one line summary]
+    contact/     [expected response time]
+    games/       [one line introducing the work]
                   [what Fire Arcade is and who it's for]
                   [what the player does]  ×2 (Turret Showdown, Sheep and Tree World)
                   [browser name], [what it does and why you built it], [download]
-    index.html    [one line: what Fire Arcade is]
+    index.html   [one line: what Fire Arcade is]
                   [one line: what the player does]  ×2
-    privacy.html  [last updated date]
+    privacy/     [last updated date]
 
 ### Writing a game one-liner
 
@@ -84,21 +94,21 @@ site uses them, so they carry no information.
 
 ## The playable embed
 
-`games.html` embeds the flight sim without loading it up front. The markup:
+`games/index.html` embeds the flight sim without loading it up front. The markup:
 
-    <div class="play-embed" data-play="games/flight-sim.html" data-play-title="3D Flight Sim">
+    <div class="play-embed" data-play="/games/flight-sim/" data-play-title="3D Flight Sim">
       <div class="play-embed__stage">
         <img class="play-embed__art" src="assets/img/flight-sim.jpg" alt="">
         <div class="play-embed__poster">
-          <a class="btn play-embed__start" href="games/flight-sim.html">Play in your browser</a>
+          <a class="btn play-embed__start" href="/games/flight-sim/">Play in your browser</a>
           <p>Runs in the page — nothing to install.</p>
         </div>
       </div>
       <div class="play-embed__bar">
         <p class="play-embed__keys">...controls...</p>
         <div class="btn-row">
-          <a class="btn btn--ghost btn--sm" href="games/flight-sim.html" data-fullscreen>Fullscreen</a>
-          <a class="btn btn--ghost btn--sm" href="games/flight-sim.html">Open on its own</a>
+          <a class="btn btn--ghost btn--sm" href="/games/flight-sim/" data-fullscreen>Fullscreen</a>
+          <a class="btn btn--ghost btn--sm" href="/games/flight-sim/">Open on its own</a>
         </div>
       </div>
     </div>
@@ -155,7 +165,7 @@ JPEG — these are decoration, not downloads.
 
 ## Forms
 
-Both the newsletter form (`index.html`) and the contact form (`contact.html`)
+Both the newsletter form (`index.html`) and the contact form (`contact/index.html`)
 have an empty `action=""`. While it is empty, `site.js` intercepts the submit
 and shows a note instead of navigating, so nothing silently vanishes.
 
@@ -166,9 +176,11 @@ something to leave until later.
 
 ## Deploying
 
-Drag the folder onto Netlify, or point Vercel or Cloudflare Pages at the repo.
-There is nothing to build. All three serve `index.html` at `/` and strip the
-`.html` from the other URLs.
+Push to `main`. GitHub Pages serves the repo root; there is nothing to build.
+Netlify, Vercel and Cloudflare Pages all work the same way if you ever move.
+
+The URLs are extensionless because of the directory layout above, not because
+of any host rewrite rule, so they survive a move between hosts unchanged.
 
 ## Accessibility notes worth not breaking
 
