@@ -268,4 +268,111 @@
     set("[data-gotd-img]", function (el) { el.src = game.img; el.alt = game.alt; });
   }
 
+
+  /* Game of the week poll ------------------------------------------------
+     A static site cannot count votes on its own, so this talks to a small
+     API. Set POLL_ENDPOINT to switch it on; while it is empty, or if the
+     request fails, the section stays hidden and the page is simply without
+     it. See docs/poll-api.md for the API this expects. */
+  var POLL_ENDPOINT = "";
+
+  var poll = document.querySelector("[data-poll]");
+  if (poll && POLL_ENDPOINT) {
+    var POLL_GAMES = [
+      { id: "flight-sim", name: "Schappi’s Flight Simulator" },
+      { id: "god-sim", name: "God Sim" },
+      { id: "turret-showdown", name: "Turret Showdown" },
+      { id: "sheep-and-tree-world", name: "Sheep and Tree World" }
+    ];
+
+    var list = poll.querySelector("[data-poll-list]");
+    var status = poll.querySelector("[data-poll-status]");
+
+    /* ISO week, so the poll turns over on Monday the same way everywhere and
+       the key is something a human can read in the database. */
+    function isoWeek(d) {
+      var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));   // Thursday of this week
+      var jan1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+      var week = Math.ceil(((t - jan1) / 86400000 + 1) / 7);
+      return t.getUTCFullYear() + "-W" + (week < 10 ? "0" + week : week);
+    }
+    var week = isoWeek(new Date());
+    var voteKey = "poll-vote-" + week;
+
+    function myVote() {
+      try { return localStorage.getItem(voteKey); } catch (e) { return null; }
+    }
+    function remember(id) {
+      try { localStorage.setItem(voteKey, id); } catch (e) {}
+    }
+
+    function render(votes, voted) {
+      var total = 0;
+      POLL_GAMES.forEach(function (g) { total += votes[g.id] || 0; });
+      list.innerHTML = "";
+      POLL_GAMES.forEach(function (g) {
+        var n = votes[g.id] || 0;
+        var li = document.createElement("li");
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "poll__row" + (voted === g.id ? " poll__row--mine" : "");
+        if (voted) row.disabled = true;
+
+        var bar = document.createElement("span");
+        bar.className = "poll__bar";
+        bar.style.width = voted && total ? Math.round((n / total) * 100) + "%" : "0";
+
+        var name = document.createElement("span");
+        name.className = "poll__name";
+        name.textContent = g.name;
+
+        var count = document.createElement("span");
+        count.className = "poll__count";
+        // Counts stay hidden until you vote, so the tally cannot lead you.
+        count.textContent = voted
+          ? n + (n === 1 ? " vote" : " votes")
+          : "Vote";
+
+        row.appendChild(bar);
+        row.appendChild(name);
+        row.appendChild(count);
+        row.addEventListener("click", function () { cast(g.id); });
+        li.appendChild(row);
+        list.appendChild(li);
+      });
+      status.textContent = voted
+        ? total + (total === 1 ? " vote" : " votes") + " this week. Thanks for voting."
+        : "";
+    }
+
+    function cast(id) {
+      if (myVote()) return;
+      remember(id);
+      render({}, id);
+      status.textContent = "Counting…";
+      fetch(POLL_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ week: week, game: id })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) { render(data.votes || {}, id); })
+        .catch(function () {
+          status.textContent = "Your vote could not be sent. Try again later.";
+        });
+    }
+
+    fetch(POLL_ENDPOINT + "?week=" + encodeURIComponent(week))
+      .then(function (r) {
+        if (!r.ok) throw new Error("poll unavailable");
+        return r.json();
+      })
+      .then(function (data) {
+        render(data.votes || {}, myVote());
+        poll.hidden = false;   // only now is there anything worth showing
+      })
+      .catch(function () { /* leave the section hidden */ });
+  }
+
 })();

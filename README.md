@@ -102,6 +102,16 @@ section is correct with JavaScript switched off; the script only ever swaps one
 real entry for another. To add a game, add an object to `GAMES` and make sure
 its image exists.
 
+## Game of the week poll
+
+Off by default. `POLL_ENDPOINT` at the top of the poll block in
+`assets/js/site.js` is empty, so the section stays hidden; it also hides itself
+if the endpoint stops answering, which means a missing or broken backend shows
+nothing rather than an empty poll.
+
+Turning it on is one line, once an endpoint exists. `docs/poll-api.md` has the
+contract it expects and a Lambda that satisfies it.
+
 ## The playable embed
 
 `games/index.html` embeds the flight sim without loading it up front. The markup:
