@@ -1,0 +1,5 @@
+# Original full-size screenshots. The processed copies that the site actually
+# uses live in assets/img/ — these are the sources, kept out of the deploy.
+images-of-fire-arcade/
+
+.DS_Store
