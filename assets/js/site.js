@@ -222,7 +222,9 @@
      already contains a real entry, so this only ever swaps one working thing
      for another, and a visitor with no JavaScript still sees a real game. */
   var featured = document.querySelector("[data-game-of-the-day]");
-  var showFeatured = null;    // set below, then called again by the poll
+  var showFeatured = null;      // one game, the full card
+  var showFeaturedTie = null;   // several level at the top, side by side
+  var showFeaturedNone = null;  // nobody has voted yet
   var featuredById = {};
   if (featured) {
     var GAMES = [
@@ -267,8 +269,79 @@
       var el = featured.querySelector(sel);
       if (el) fn(el);
     };
-    showFeatured = function (g, eyebrow) {
-      set("[data-gotd-eyebrow]", function (el) { el.textContent = eyebrow; });
+
+    /* The single-game card is already in the HTML, so it is kept as written
+       and its text swapped. The tie and no-votes shapes do not exist in the
+       markup, so they replace the body; this remembers the original in order
+       to put it back. */
+    var body = featured.querySelector(".featured__body");
+    var bodyHTML = body ? body.innerHTML : "";
+    var replaced = false;
+    function restore() {
+      if (!replaced) return;
+      body.innerHTML = bodyHTML;
+      body.classList.remove("featured__body--wide");
+      replaced = false;
+    }
+    function eyebrow(text) {
+      set("[data-gotd-eyebrow]", function (el) { el.textContent = text; });
+    }
+    function mk(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text) n.textContent = text;
+      return n;
+    }
+
+    showFeaturedNone = function () {
+      if (!body) return;
+      eyebrow("Favourite game");
+      body.innerHTML = "";
+      body.classList.add("featured__body--wide");
+      replaced = true;
+      var wrap = mk("div", "featured__note");
+      wrap.appendChild(mk("h2", null, "No votes yet this week"));
+      wrap.appendChild(mk("p", null,
+        "Nobody has voted since the poll reset on Monday. Pick one above and "
+        + "it will show up here."));
+      body.appendChild(wrap);
+    };
+
+    showFeaturedTie = function (games) {
+      if (!body) return;
+      eyebrow(games.length === 1 ? "Favourite game"
+            : games.length > 2 ? "Joint favourites" : "Joint favourite");
+      body.innerHTML = "";
+      body.classList.add("featured__body--wide");
+      replaced = true;
+      var grid = mk("div", "featured__tie");
+      games.forEach(function (g) {
+        var a = mk("a", "featured__tieitem");
+        a.href = g.href;
+        var art = mk("span", "featured__art");
+        if (g.img) {
+          var img = document.createElement("img");
+          img.src = g.img;
+          img.alt = g.alt || "";
+          art.appendChild(img);
+        } else {
+          // No screenshot for this one yet: an empty frame, not a fake.
+          art.className += " featured__art--empty";
+        }
+        a.appendChild(art);
+        a.appendChild(mk("span", "featured__tiename", g.title));
+        grid.appendChild(a);
+      });
+      body.appendChild(grid);
+      if (games.length > 1) {
+        body.appendChild(mk("p", "featured__tienote",
+          games.length + " games are level this week."));
+      }
+    };
+
+    showFeatured = function (g, text) {
+      restore();
+      eyebrow(text);
       set("[data-gotd-title]", function (el) { el.textContent = g.title; });
       set("[data-gotd-desc]", function (el) { el.textContent = g.desc; });
       set("[data-gotd-link]", function (el) { el.href = g.href; });
@@ -290,10 +363,12 @@
   var poll = document.querySelector("[data-poll]");
   if (poll && POLL_ENDPOINT) {
     var POLL_GAMES = [
-      { id: "flight-sim", name: "Schappi’s Flight Simulator" },
-      { id: "god-sim", name: "God Sim" },
-      { id: "turret-showdown", name: "Turret Showdown" },
-      { id: "sheep-and-tree-world", name: "Sheep and Tree World" }
+      { id: "flight-sim", name: "Schappi’s Flight Simulator",
+        href: "/games/flight-sim/" },
+      { id: "god-sim", name: "God Sim", href: "/games/god-sim/" },
+      { id: "turret-showdown", name: "Turret Showdown", href: "/games/" },
+      { id: "sheep-and-tree-world", name: "Sheep and Tree World",
+        href: "https://schappi-plays.itch.io/sheep-and-tree-world" }
     ];
 
     var list = poll.querySelector("[data-poll-list]");
@@ -321,23 +396,45 @@
       try { localStorage.setItem(voteKey(), id); } catch (e) {}
     }
 
-    /* Promote the poll's winner into the card below. Three things mean there
-       is no answer yet, and all of them quietly leave the game of the day in
-       place: nobody has voted, two games are level, or the winner is one of
-       the games that has no screenshot or description to show. */
+    /* Report the poll's result in the card below: the winner, or all of the
+       games level at the top, or a note that nobody has voted. Games without
+       a card of their own still have a name and a link, so they can win. */
+    function cardFor(g) {
+      var entry = featuredById[g.id];
+      return {
+        title: entry ? entry.title : g.name,
+        href: entry ? entry.href : g.href,
+        img: entry ? entry.img : null,
+        alt: entry ? entry.alt : ""
+      };
+    }
+
     function highlightFavourite(votes) {
       if (!showFeatured) return;
-      var counts = POLL_GAMES.map(function (g) {
-        return { id: g.id, n: votes[g.id] || 0 };
-      });
       var max = 0;
-      counts.forEach(function (c) { if (c.n > max) max = c.n; });
-      if (!max) return;
-      var leaders = counts.filter(function (c) { return c.n === max; });
-      if (leaders.length !== 1) return;
-      var entry = featuredById[leaders[0].id];
-      if (!entry) return;
-      showFeatured(entry, "Favourite game");
+      POLL_GAMES.forEach(function (g) {
+        var n = votes[g.id] || 0;
+        if (n > max) max = n;
+      });
+      if (!max) { showFeaturedNone(); return; }
+
+      var leaders = POLL_GAMES.filter(function (g) {
+        return (votes[g.id] || 0) === max;
+      });
+      if (leaders.length > 1) {
+        showFeaturedTie(leaders.map(cardFor));
+        return;
+      }
+
+      var won = leaders[0];
+      var entry = featuredById[won.id];
+      if (entry) {
+        showFeatured(entry, "Favourite game");
+      } else {
+        // Winning without a screenshot or a description written yet: show it
+        // on its own rather than pretending something else won.
+        showFeaturedTie([cardFor(won)]);
+      }
     }
 
     function render(votes, voted) {

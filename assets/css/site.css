@@ -305,6 +305,25 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
   .featured__body { grid-template-columns: 1fr; gap: 20px; }
 }
 
+/* Two or more games level at the top of the poll, shown side by side. */
+.featured__body--wide { display: block; }
+.featured__tie {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px; max-width: 900px;
+}
+.featured__tieitem { display: block; text-decoration: none; color: inherit; }
+.featured__tieitem .featured__art { margin: 0 0 12px; }
+.featured__tieitem:hover .featured__art { border-color: var(--border-2); }
+.featured__art--empty::after {
+  content: "No screenshot yet"; display: flex; height: 100%;
+  align-items: center; justify-content: center;
+  color: var(--text-2); font-size: 13px;
+}
+.featured__tiename { font-weight: 600; }
+.featured__tienote { margin: 18px 0 0; color: var(--text-2); font-size: 14px; }
+.featured__note h2 { margin: 0 0 10px; }
+.featured__note p { margin: 0; color: var(--text-2); max-width: 46ch; }
+
 /* Game of the week poll ---------------------------------------------------- */
 .poll__head { margin: 0 0 6px; }
 .poll__sub { margin: 0 0 22px; color: var(--text-2); font-size: 14px; }
