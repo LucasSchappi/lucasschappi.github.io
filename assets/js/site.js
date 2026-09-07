@@ -297,14 +297,17 @@
       var week = Math.ceil(((t - jan1) / 86400000 + 1) / 7);
       return t.getUTCFullYear() + "-W" + (week < 10 ? "0" + week : week);
     }
+    /* A first guess only. The server decides which week it is and says so in
+       its reply, so a browser with a wrong clock cannot vote twice by
+       straddling Monday midnight. */
     var week = isoWeek(new Date());
-    var voteKey = "poll-vote-" + week;
+    function voteKey() { return "poll-vote-" + week; }
 
     function myVote() {
-      try { return localStorage.getItem(voteKey); } catch (e) { return null; }
+      try { return localStorage.getItem(voteKey()); } catch (e) { return null; }
     }
     function remember(id) {
-      try { localStorage.setItem(voteKey, id); } catch (e) {}
+      try { localStorage.setItem(voteKey(), id); } catch (e) {}
     }
 
     function render(votes, voted) {
@@ -353,7 +356,10 @@
       status.textContent = "Counting…";
       fetch(POLL_ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // text/plain keeps this a "simple" request, so the browser sends it
+        // straight away instead of asking permission with an OPTIONS call
+        // first. The body is still JSON; only the label differs.
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ week: week, game: id })
       })
         .then(function (r) { return r.json(); })
@@ -369,6 +375,7 @@
         return r.json();
       })
       .then(function (data) {
+        if (data.week) week = data.week;
         render(data.votes || {}, myVote());
         poll.hidden = false;   // only now is there anything worth showing
       })

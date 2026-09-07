@@ -3,6 +3,12 @@
 The site is static, so it cannot count votes itself. The front end is written
 and waiting; it needs one HTTP endpoint. Everything else is done.
 
+> **There is a simpler way.** [`poll-setup.md`](poll-setup.md) does the same
+> job with a Google Apps Script you can set up yourself in a few minutes, for
+> free, with no AWS account involved. Use that unless you specifically want
+> this running on the same AWS account as the site. The two are
+> interchangeable — the front end cannot tell them apart.
+
 To switch it on, set `POLL_ENDPOINT` at the top of the poll block in
 `assets/js/site.js` to the URL below. Until then the section stays hidden, and
 it also hides itself if the endpoint stops responding — a broken backend shows
