@@ -215,4 +215,57 @@
   document.querySelectorAll("[data-year]").forEach(function (el) {
     el.textContent = new Date().getFullYear();
   });
+
+  /* Game of the day. A static site has no server to ask, so the choice comes
+     from the date: everyone opening the page on the same day sees the same
+     game, and it moves on at midnight. The markup already contains a real
+     entry, so this only ever swaps one working thing for another. */
+  var featured = document.querySelector("[data-game-of-the-day]");
+  if (featured) {
+    var GAMES = [
+      {
+        title: "Schappi\u2019s Flight Simulator",
+        desc: "Fly a light aircraft over terrain that is generated as you go. Dawn, dusk or night, and a different world every time.",
+        href: "/games/flight-sim/",
+        img: "/assets/img/flight-sim-cover.jpg?v=1",
+        alt: "A light aircraft banking over a lake at dusk",
+        cta: "Play in your browser"
+      },
+      {
+        title: "God Sim",
+        desc: "A few thousand simulated people on a planet. Villages, faiths and wars come out of the rules rather than a script.",
+        href: "/games/god-sim/",
+        img: "/assets/img/god-sim.jpg",
+        alt: "The God Sim world-creation screen",
+        cta: "Play in your browser"
+      },
+      {
+        title: "Fire Arcade",
+        desc: "An unblocked games site built on Google Sites \u2014 so most school filters can't block it. Free, no account, nothing to install.",
+        href: "https://sites.google.com/schappi.com/fire-arcade",
+        img: "/assets/img/fire-arcade-card.jpg",
+        alt: "The Fire Arcade home page",
+        cta: "Visit Fire Arcade"
+      }
+    ];
+
+    // Whole days since the epoch, in local time, so it turns over at midnight
+    // rather than at some hour that depends on where you are.
+    var now = new Date();
+    var days = Math.floor(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000
+    );
+    var game = GAMES[((days % GAMES.length) + GAMES.length) % GAMES.length];
+
+    var set = function (sel, fn) {
+      var el = featured.querySelector(sel);
+      if (el) fn(el);
+    };
+    set("[data-gotd-title]", function (el) { el.textContent = game.title; });
+    set("[data-gotd-desc]", function (el) { el.textContent = game.desc; });
+    set("[data-gotd-link]", function (el) { el.href = game.href; });
+    set("[data-gotd-cta]", function (el) { el.href = game.href; el.textContent = game.cta; });
+    set("[data-gotd-img]", function (el) { el.src = game.img; el.alt = game.alt; });
+  }
+
 })();

@@ -135,6 +135,8 @@ h3 { font-size: 18px; }
 .hero h1 { font-size: 40px; margin-bottom: 12px; }
 .hero p { font-size: 18px; color: var(--text-2); max-width: 52ch; margin-bottom: 26px; }
 .hero h1 + .btn-row { margin-top: 24px; }   /* no lede: keep the buttons off the title */
+.hero--bare { padding-block: 56px 16px; }   /* title only: do not leave a hole under it */
+.hero--bare h1 { margin-bottom: 0; }
 
 /* Signup --------------------------------------------------------------- */
 .signup { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; }
@@ -284,6 +286,24 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
 .play-embed__bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 12px 14px; border-top: 1px solid var(--border); background: var(--bg-2); }
 .play-embed__keys { margin: 0; font-size: 13px; color: var(--text-2); }
 .play-embed__keys kbd { font: inherit; font-weight: 600; color: var(--text); }
+
+/* Game of the day ---------------------------------------------------------- */
+.featured__eyebrow {
+  margin: 0 0 18px; font-size: 12px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--accent);
+}
+.featured__body { display: grid; grid-template-columns: 1.25fr 1fr; gap: 32px; align-items: center; }
+.featured__art {
+  display: block; border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; background: var(--bg-3); aspect-ratio: 16 / 9;
+}
+.featured__art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.featured__art:hover { border-color: var(--border-2); }
+.featured__text h2 { margin: 0 0 10px; }
+.featured__text p { margin: 0 0 22px; color: var(--text-2); }
+@media (max-width: 720px) {
+  .featured__body { grid-template-columns: 1fr; gap: 20px; }
+}
 
 /* Footer ------------------------------------------------------------------ */
 .site-footer { border-top: 1px solid var(--border); background: var(--bg-2); padding-block: 36px 24px; margin-top: auto; }

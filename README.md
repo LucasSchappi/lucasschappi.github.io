@@ -16,7 +16,6 @@ files — relative paths and the flight-sim iframe behave differently over
     index.html                   Home, served at /
     games/index.html             /games
     about/index.html             /about
-    contact/index.html           /contact
     privacy/index.html           /privacy
     home/index.html              /home - a redirect to /, nothing else
 
@@ -72,7 +71,6 @@ as a yellow highlight so you can spot it on the page. Delete the wrapping
 Still outstanding:
 
     about/       [one line summary]
-    contact/     [expected response time]
     games/       [one line introducing the work]
                   [what Fire Arcade is and who it's for]
                   [what the player does]  ×2 (Turret Showdown, Sheep and Tree World)
@@ -91,6 +89,18 @@ fifteen words.
 
 Avoid *immersive, unique, crafted, experiences* and *we believe* — every studio
 site uses them, so they carry no information.
+
+## Game of the day
+
+The home page features one game, chosen by the date rather than by a server:
+`assets/js/site.js` counts whole days since the epoch and takes that modulo the
+length of its `GAMES` list. Everyone opening the page on the same day sees the
+same game, and it changes at local midnight.
+
+The markup in `index.html` already contains a complete, working entry, so the
+section is correct with JavaScript switched off; the script only ever swaps one
+real entry for another. To add a game, add an object to `GAMES` and make sure
+its image exists.
 
 ## The playable embed
 
@@ -165,7 +175,7 @@ JPEG — these are decoration, not downloads.
 
 ## Forms
 
-Both the newsletter form (`index.html`) and the contact form (`contact/index.html`)
+The newsletter form (`index.html`)
 have an empty `action=""`. While it is empty, `site.js` intercepts the submit
 and shows a note instead of navigating, so nothing silently vanishes.
 

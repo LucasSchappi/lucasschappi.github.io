@@ -19,7 +19,7 @@
 <meta name="theme-color" content="#ffffff">
 
 <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/css/site.css?v=3">
+<link rel="stylesheet" href="/assets/css/site.css?v=4">
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -30,9 +30,9 @@
       Schappi Studios
     </a>
     <nav class="nav" id="primary-nav" aria-label="Main">
+      <a href="/" aria-current="page">Home</a>
       <a href="/games/">Games</a>
       <a href="/about/">About</a>
-      <a href="/contact/">Contact</a>
     </nav>
     <button class="nav-toggle" type="button" aria-expanded="false"
             aria-controls="primary-nav" aria-label="Menu"><span></span></button>
@@ -40,11 +40,31 @@
 </header>
 <main id="main">
 
-  <section class="hero">
+  <section class="hero hero--bare">
     <div class="wrap">
       <h1>Schappi Studios</h1>
-      <div class="btn-row">
-        <a class="btn" href="/games/">See everything</a>
+    </div>
+  </section>
+
+  <!-- Game of the day. Rendered here in full so it works with no JavaScript;
+       assets/js/site.js swaps in whichever entry today's date lands on. -->
+  <section class="section featured" data-game-of-the-day>
+    <div class="wrap">
+      <p class="featured__eyebrow">Game of the day</p>
+      <div class="featured__body">
+        <a class="featured__art" href="/games/flight-sim/" data-gotd-link>
+          <img src="/assets/img/flight-sim-cover.jpg?v=1" alt="" width="1600" height="913"
+               decoding="async" data-gotd-img>
+        </a>
+        <div class="featured__text">
+          <h2 data-gotd-title>Schappi&rsquo;s Flight Simulator</h2>
+          <p data-gotd-desc>Fly a light aircraft over terrain that is generated as you go.
+            Dawn, dusk or night, and a different world every time.</p>
+          <div class="btn-row">
+            <a class="btn" href="/games/flight-sim/" data-gotd-cta>Play in your browser</a>
+            <a class="btn btn--ghost" href="/games/">See everything</a>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -117,7 +137,7 @@
         </article>
 
         <article class="card">
-          <div class="card__art"><img src="/assets/img/flight-sim-cover.jpg?v=1" alt="A light aircraft banking over a lake at dusk, titled Schappi's Flight Simulator" width="1600" height="913" loading="lazy" decoding="async"></div>
+          <div class="card__art"><img src="/assets/img/flight-sim.jpg" alt="A light aircraft banking over a green coastline" width="1600" height="1000" loading="lazy" decoding="async"></div>
           <div class="card__body">
             <div class="card__head">
               <h3>3D Flight Sim</h3>
@@ -165,9 +185,9 @@
       <div class="footer-col">
         <h4>Site</h4>
         <ul>
+          <li><a href="/">Home</a></li>
           <li><a href="/games/">Games</a></li>
           <li><a href="/about/">About</a></li>
-          <li><a href="/contact/">Contact</a></li>
         </ul>
       </div>
 
@@ -188,6 +208,6 @@
   </div>
 </footer>
 
-<script src="/assets/js/site.js?v=3" defer></script>
+<script src="/assets/js/site.js?v=4" defer></script>
 </body>
 </html>
