@@ -16,7 +16,6 @@ files — relative paths and the flight-sim iframe behave differently over
     index.html              Home
     games.html              Games + the playable flight sim + software
     about.html              Studio
-    press.html              Press kit
     contact.html            Contact
     privacy.html            Privacy + terms
 
@@ -70,7 +69,6 @@ Still outstanding:
                   [browser name], [what it does and why you built it], [download]
     index.html    [one line: what Fire Arcade is]
                   [one line: what the player does]  ×2
-    press.html    [usage permission + press email]
     privacy.html  [last updated date]
 
 ### Writing a game one-liner
