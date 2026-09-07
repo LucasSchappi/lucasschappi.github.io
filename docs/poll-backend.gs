@@ -78,3 +78,15 @@ function json(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+/* Wipe this week's votes back to zero.
+ *
+ * Only you can run this: pick "resetThisWeek" from the function dropdown at
+ * the top of the Apps Script editor and press Run. It is not reachable from
+ * the web app URL, so nobody visiting the site can call it.
+ */
+function resetThisWeek() {
+  var week = isoWeek(new Date());
+  PropertiesService.getScriptProperties().deleteProperty('votes-' + week);
+  Logger.log('Cleared ' + week);
+}

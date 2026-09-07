@@ -216,14 +216,18 @@
     el.textContent = new Date().getFullYear();
   });
 
-  /* Game of the day. A static site has no server to ask, so the choice comes
-     from the date: everyone opening the page on the same day sees the same
-     game, and it moves on at midnight. The markup already contains a real
-     entry, so this only ever swaps one working thing for another. */
+  /* The featured card. Normally it is whichever game is winning the poll, but
+     that answer only arrives over the network, so it starts as a game of the
+     day chosen from the date and is replaced once the votes are in. The markup
+     already contains a real entry, so this only ever swaps one working thing
+     for another, and a visitor with no JavaScript still sees a real game. */
   var featured = document.querySelector("[data-game-of-the-day]");
+  var showFeatured = null;    // set below, then called again by the poll
+  var featuredById = {};
   if (featured) {
     var GAMES = [
       {
+        id: "flight-sim",
         title: "Schappi\u2019s Flight Simulator",
         desc: "Fly a light aircraft over terrain that is generated as you go. Dawn, dusk or night, and a different world every time.",
         href: "/games/flight-sim/",
@@ -232,6 +236,7 @@
         cta: "Play in your browser"
       },
       {
+        id: "god-sim",
         title: "God Sim",
         desc: "A few thousand simulated people on a planet. Villages, faiths and wars come out of the rules rather than a script.",
         href: "/games/god-sim/",
@@ -240,6 +245,7 @@
         cta: "Play in your browser"
       },
       {
+        id: "fire-arcade",
         title: "Fire Arcade",
         desc: "An unblocked games site built on Google Sites \u2014 so most school filters can't block it. Free, no account, nothing to install.",
         href: "https://sites.google.com/schappi.com/fire-arcade",
@@ -261,11 +267,16 @@
       var el = featured.querySelector(sel);
       if (el) fn(el);
     };
-    set("[data-gotd-title]", function (el) { el.textContent = game.title; });
-    set("[data-gotd-desc]", function (el) { el.textContent = game.desc; });
-    set("[data-gotd-link]", function (el) { el.href = game.href; });
-    set("[data-gotd-cta]", function (el) { el.href = game.href; el.textContent = game.cta; });
-    set("[data-gotd-img]", function (el) { el.src = game.img; el.alt = game.alt; });
+    showFeatured = function (g, eyebrow) {
+      set("[data-gotd-eyebrow]", function (el) { el.textContent = eyebrow; });
+      set("[data-gotd-title]", function (el) { el.textContent = g.title; });
+      set("[data-gotd-desc]", function (el) { el.textContent = g.desc; });
+      set("[data-gotd-link]", function (el) { el.href = g.href; });
+      set("[data-gotd-cta]", function (el) { el.href = g.href; el.textContent = g.cta; });
+      set("[data-gotd-img]", function (el) { el.src = g.img; el.alt = g.alt; });
+    };
+    GAMES.forEach(function (g) { featuredById[g.id] = g; });
+    showFeatured(game, "Game of the day");
   }
 
 
@@ -308,6 +319,25 @@
     }
     function remember(id) {
       try { localStorage.setItem(voteKey(), id); } catch (e) {}
+    }
+
+    /* Promote the poll's winner into the card below. Three things mean there
+       is no answer yet, and all of them quietly leave the game of the day in
+       place: nobody has voted, two games are level, or the winner is one of
+       the games that has no screenshot or description to show. */
+    function highlightFavourite(votes) {
+      if (!showFeatured) return;
+      var counts = POLL_GAMES.map(function (g) {
+        return { id: g.id, n: votes[g.id] || 0 };
+      });
+      var max = 0;
+      counts.forEach(function (c) { if (c.n > max) max = c.n; });
+      if (!max) return;
+      var leaders = counts.filter(function (c) { return c.n === max; });
+      if (leaders.length !== 1) return;
+      var entry = featuredById[leaders[0].id];
+      if (!entry) return;
+      showFeatured(entry, "Favourite game");
     }
 
     function render(votes, voted) {
@@ -363,7 +393,10 @@
         body: JSON.stringify({ week: week, game: id })
       })
         .then(function (r) { return r.json(); })
-        .then(function (data) { render(data.votes || {}, id); })
+        .then(function (data) {
+          render(data.votes || {}, id);
+          highlightFavourite(data.votes || {});
+        })
         .catch(function () {
           status.textContent = "Your vote could not be sent. Try again later.";
         });
@@ -377,6 +410,7 @@
       .then(function (data) {
         if (data.week) week = data.week;
         render(data.votes || {}, myVote());
+        highlightFavourite(data.votes || {});
         poll.hidden = false;   // only now is there anything worth showing
       })
       .catch(function () { /* leave the section hidden */ });
