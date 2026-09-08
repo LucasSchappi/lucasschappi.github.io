@@ -1492,7 +1492,7 @@ canvas { display: block; }
   const SHOTS = [
     // t: time of day, d: seconds, cam: framing, then the aeroplane's path:
     // alt above ground, speed m/s, turn rad/s, bank rad, climb m/s.
-    { t: 'DAWN',   d: 5.0, cam: 'hero',    intro: true },
+    { t: 'DAWN',   d: 4.0, cam: 'hero',    intro: true },
     { t: 'DAWN',   d: 4.0, cam: 'ground',  alt: 55,  speed: 92,  turn: 0,     bank: 0.10, climb: 0 },
     // Low over the water with the instruments live: this is what playing it
     // actually looks like, which is the point of a trailer.
@@ -1504,7 +1504,7 @@ canvas { display: block; }
     { t: 'DUSK',   d: 3.5, cam: 'wing',    alt: 130, speed: 92,  turn: 0.14,  bank: 0.55, climb: -6 },
     { t: 'NIGHT',  d: 3.5, cam: 'ground',  alt: 70,  speed: 98,  turn: 0,     bank: 0.14, climb: 0 },
     { t: 'DUSK',   d: 4.5, cam: 'ground',  alt: 180, speed: 110, turn: 0.03,  bank: 0.2,  climb: -46, dive: true },
-    { t: 'DAWN',   d: 5.0, cam: 'hero',    title: true }
+    { t: 'DAWN',   d: 7.5, cam: 'hero',    title: true }
   ];
 
   let shotIndex = -1, shotTime = 0, shotDone = false;
@@ -1534,7 +1534,7 @@ canvas { display: block; }
     applyTime(TIMES.findIndex(x => x.name === sh.t), false);
 
     if (sh.intro || sh.title) {
-      introTime = sh.title ? INTRO_IN : 0;      // the title shot opens parked
+      introTime = 0;      // both hero shots fly the approach in from the start
       if (sh.title) {
         const ov = document.getElementById('overlay');
         ov.classList.remove('hidden');
