@@ -74,6 +74,22 @@ Paste the URL straight into a browser tab. You should see:
 If you see that, it is working. If you get a sign-in page instead, "Who has
 access" is not set to "Anyone" — go back to step 6.
 
+## Clearing a week's votes
+
+Pick **resetThisWeek** from the function dropdown at the top of the editor and
+press **Run**. It is not reachable from the web app URL, so nobody visiting the
+site can call it.
+
+Clearing the votes also starts a new *round*. That matters: a browser
+remembers that it has voted, and without a new round every previous voter
+would stay locked out of a poll that looked open to them. The round number
+comes back with the counts, the page keys its memory on it, and a new one
+lets everybody vote again.
+
+Deleting the `votes-<week>` row by hand in Project Settings works the same
+way, because the entry is rebuilt with a fresh round the next time anyone
+loads the page.
+
 ## Changing it later
 
 Editing the script is not enough on its own: Apps Script keeps serving the

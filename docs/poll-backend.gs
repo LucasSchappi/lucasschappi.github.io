@@ -20,7 +20,8 @@ var GAMES = [
 
 function doGet() {
   var week = isoWeek(new Date());
-  return json({ week: week, votes: read(week) });
+  var state = read(week);
+  return json({ week: week, stamp: state.stamp, votes: state.votes });
 }
 
 function doPost(e) {
@@ -37,7 +38,8 @@ function doPost(e) {
   var game = String(body.game || '');
 
   if (GAMES.indexOf(game) === -1) {
-    return json({ week: week, votes: read(week) });
+    var known = read(week);
+    return json({ week: week, stamp: known.stamp, votes: known.votes });
   }
 
   /* Two people voting at the same moment would otherwise both read the same
@@ -45,10 +47,10 @@ function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var votes = read(week);
-    votes[game] = (votes[game] || 0) + 1;
-    write(week, votes);
-    return json({ week: week, votes: votes });
+    var state = read(week);
+    state.votes[game] = (state.votes[game] || 0) + 1;
+    write(week, state);
+    return json({ week: week, stamp: state.stamp, votes: state.votes });
   } finally {
     lock.releaseLock();
   }
@@ -64,14 +66,37 @@ function isoWeek(d) {
   return t.getUTCFullYear() + '-W' + (week < 10 ? '0' + week : week);
 }
 
+/* Returns { stamp, votes }.
+ *
+ * The stamp names this round of voting. Browsers remember which round they
+ * voted in, so a new stamp is what lets everybody vote again: clearing the
+ * votes deletes this whole entry, and the next read below builds a fresh one
+ * with a new stamp. Without it, wiping the counts would leave every previous
+ * voter locked out of a poll that looks open.
+ */
 function read(week) {
   var raw = PropertiesService.getScriptProperties().getProperty('votes-' + week);
-  return raw ? JSON.parse(raw) : {};
+  var state = null;
+  if (raw) {
+    try {
+      state = JSON.parse(raw);
+    } catch (err) {
+      state = null;   // hand-edited into something invalid; start over
+    }
+  }
+
+  if (state && state.votes) return state;
+  // An entry written before stamps existed is a bare set of counts.
+  state = { stamp: null, votes: (state || {}) };
+
+  state.stamp = Date.now().toString(36);
+  write(week, state);
+  return state;
 }
 
-function write(week, votes) {
+function write(week, state) {
   PropertiesService.getScriptProperties()
-    .setProperty('votes-' + week, JSON.stringify(votes));
+    .setProperty('votes-' + week, JSON.stringify(state));
 }
 
 function json(obj) {
@@ -88,5 +113,7 @@ function json(obj) {
 function resetThisWeek() {
   var week = isoWeek(new Date());
   PropertiesService.getScriptProperties().deleteProperty('votes-' + week);
-  Logger.log('Cleared ' + week);
+  // Reading it back builds a fresh round, so anyone who already voted this
+  // week is free to vote again.
+  Logger.log('Cleared ' + week + ', new round ' + read(week).stamp);
 }

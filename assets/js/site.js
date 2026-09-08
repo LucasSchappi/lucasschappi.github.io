@@ -403,7 +403,29 @@
        its reply, so a browser with a wrong clock cannot vote twice by
        straddling Monday midnight. */
     var week = isoWeek(new Date());
-    function voteKey() { return "poll-vote-" + week; }
+
+    /* Which round of voting this is. The server sends it, and it changes
+       whenever the votes are cleared. Without it, wiping the counts would
+       leave everyone who had already voted locked out: their browser would
+       still be holding a note saying they had. A server too old to send one
+       falls back to the plain week, which is how this behaved before. */
+    var stamp = null;
+    function voteKey() {
+      return "poll-vote-" + week + (stamp ? "-" + stamp : "");
+    }
+
+    // Notes from earlier weeks and earlier rounds are dead weight.
+    function forgetOldRounds() {
+      try {
+        var keep = voteKey();
+        for (var i = localStorage.length - 1; i >= 0; i--) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf("poll-vote-") === 0 && k !== keep) {
+            localStorage.removeItem(k);
+          }
+        }
+      } catch (e) {}
+    }
 
     function myVote() {
       try { return localStorage.getItem(voteKey()); } catch (e) { return null; }
@@ -523,6 +545,8 @@
       })
       .then(function (data) {
         if (data.week) week = data.week;
+        if (data.stamp) stamp = data.stamp;
+        forgetOldRounds();
         render(data.votes || {}, myVote());
         highlightFavourite(data.votes || {});
         // Only now is there anything worth showing.
