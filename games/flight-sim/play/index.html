@@ -55,6 +55,22 @@ canvas { display: block; }
 /* Nothing but the title over the fly-in: the instruments have nothing to
    report yet, and they cut across the shot. */
 #hud.titlescreen { display: none; }
+/* Replay scrubber. */
+#replaybar {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 18px;
+  z-index: 30; width: min(560px, 90vw); pointer-events: none;
+  font-family: 'Courier New', monospace; font-size: 13px; color: #0f0;
+  background: rgba(0,0,0,0.55); border: 1px solid rgba(0,255,100,0.3);
+  border-radius: 5px; padding: 9px 12px; letter-spacing: 1px;
+}
+#replaybar.hidden { display: none; }
+#replaybar .rb-line { margin-bottom: 7px; }
+#replaybar .rb-track {
+  height: 4px; background: rgba(0,255,100,0.18); border-radius: 2px; overflow: hidden;
+}
+#replaybar .rb-track i { display: block; height: 100%; background: #0f0; }
+#replaybar .rb-keys { margin-top: 7px; font-size: 11px; opacity: 0.65; letter-spacing: 0; }
+#overlay .hint { font-size: 14px; opacity: 0.7; }
 /* Trailer only: which shot this is, for deciding what to change. */
 #timecode {
   position: absolute; left: 14px; bottom: 14px; z-index: 30;
@@ -221,6 +237,7 @@ canvas { display: block; }
   </div>
   <div id="toast"></div>
 </div>
+<div id="replaybar" class="hidden"></div>
 <div id="timecode" style="display:none"></div>
 <div id="challenge-banner" class="hidden">
   <div id="cb-name"></div>
@@ -1265,7 +1282,8 @@ canvas { display: block; }
     // crash card keeps its instruments, since the final readings are the
     // interesting part of a crash.
     const onTitle = !playing && !crashed;
-    document.getElementById('hud').classList.toggle('titlescreen', onTitle || TRAILER);
+    document.getElementById('hud').classList.toggle('titlescreen',
+      onTitle || TRAILER || replaying);
     if (CHALLENGE) {
       document.getElementById('challenge-banner').classList.toggle('hidden', onTitle);
     }
@@ -1274,7 +1292,9 @@ canvas { display: block; }
     // the flight itself is over.
     updateBlast(dt);
 
-    if (TRAILER) {
+    if (replaying) {
+      updateReplay(dt);
+    } else if (TRAILER) {
       if (!shotDone) updateTrailer(dt);
       else updateIntro(dt);                      // hold on the hero pose
     } else if (!playing && !crashed) {
@@ -1424,7 +1444,8 @@ canvas { display: block; }
           else if (CHALLENGE === CHALLENGES.land) sub = 'No landing' + dot + hitSpeed + ' kts';
           else if (CHALLENGE === CHALLENGES.course) sub = 'Gate ' + gateIndex + ' of ' + gates.length;
           step.querySelector('.sub').textContent = sub;
-          step.querySelector('.prompt').textContent = 'Click or press SPACE to restart';
+          step.querySelector('.prompt').innerHTML =
+            'Click or press SPACE to restart<br><span class="hint">R for replay</span>';
         }, 2100);
         return;
       }
@@ -1451,6 +1472,8 @@ canvas { display: block; }
         return;
       }
     }
+
+    recordFrame();
 
     // Propeller spin
     spinProp(throttle * PROP_RATE, dt);
@@ -1517,7 +1540,7 @@ canvas { display: block; }
     // alt above ground, speed m/s, turn rad/s, bank rad, climb m/s.
     // rate slows the approach without shortening it, so the opening can run
     // longer and still cut away while the aeroplane is moving.
-    { t: 'DAWN',   d: 5.5, cam: 'hero',    intro: true, rate: 0.75 },
+    { t: 'DAWN',   d: 7.0, cam: 'hero',    intro: true, rate: 0.68 },
     // From here it is mostly flown from the aeroplane, because that is what
     // playing it looks like. The one outside shot left is the crash, which
     // there is no way to watch from inside.
@@ -1741,6 +1764,201 @@ canvas { display: block; }
       if (shotIndex + 1 < SHOTS.length) beginShot(shotIndex + 1);
       else shotDone = true;                      // hold on the title
     }
+  }
+
+  // ===== REPLAY =====
+  // Every frame of a flight is kept, so that after a crash the whole thing can
+  // be flown over again with a camera instead of a control column. Positions
+  // and orientations only: the world is a function of the seed, so it does not
+  // need recording, and neither does anything the physics can work out again.
+  const REPLAY_MAX = 14000;               // about four minutes at 60 frames a second
+  const repT = new Float32Array(REPLAY_MAX);
+  const repP = new Float32Array(REPLAY_MAX * 3);
+  const repQ = new Float32Array(REPLAY_MAX * 4);
+  const repExtra = new Float32Array(REPLAY_MAX * 2);   // throttle, airspeed
+  let repCount = 0;
+
+  function recordFrame() {
+    if (repCount >= REPLAY_MAX) return;   // a very long flight simply stops recording
+    const i = repCount++;
+    repT[i] = elapsed;
+    repP[i * 3] = planeGroup.position.x;
+    repP[i * 3 + 1] = planeGroup.position.y;
+    repP[i * 3 + 2] = planeGroup.position.z;
+    repQ[i * 4] = planeGroup.quaternion.x;
+    repQ[i * 4 + 1] = planeGroup.quaternion.y;
+    repQ[i * 4 + 2] = planeGroup.quaternion.z;
+    repQ[i * 4 + 3] = planeGroup.quaternion.w;
+    repExtra[i * 2] = throttle;
+    repExtra[i * 2 + 1] = airspeed;
+  }
+
+  const REP_CAMS = ['CHASE', 'COCKPIT', 'WING', 'ORBIT', 'FREE'];
+  const REP_SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
+
+  let replaying = false;
+  let repHead = 0;                        // seconds into the flight
+  let repPaused = true;
+  let repSpeedIx = 3;                     // 1x
+  let repCamIx = 0;
+  let repHudOn = true;
+  let repBlasted = false;
+  const repFree = new THREE.Vector3();    // free camera position
+  let repFreeYaw = 0, repFreePitch = -0.15;
+  const _rp = new THREE.Vector3(), _rp2 = new THREE.Vector3();
+  const _rq = new THREE.Quaternion(), _rq2 = new THREE.Quaternion();
+  const _rdir = new THREE.Vector3(), _rright = new THREE.Vector3();
+
+  function repDuration() {
+    return repCount ? repT[repCount - 1] - repT[0] : 0;
+  }
+
+  function enterReplay() {
+    if (repCount < 2) return;
+    replaying = true;
+    repHead = 0;
+    repPaused = false;
+    repSpeedIx = 3;
+    repCamIx = 0;
+    repBlasted = false;
+    clearBlast();
+    planeGroup.visible = true;
+    document.getElementById('overlay').classList.add('hidden');
+    document.getElementById('replaybar').classList.remove('hidden');
+    document.getElementById('hud').classList.add('titlescreen');
+    repFree.copy(camera.position);
+    toast('REPLAY');
+  }
+
+  function leaveReplay() {
+    replaying = false;
+    document.getElementById('replaybar').classList.add('hidden');
+    document.getElementById('overlay').classList.remove('hidden');
+    cockpitGroup.visible = false;
+  }
+
+  // Where the aeroplane was at a given moment, found by walking to the right
+  // pair of frames and blending between them, so scrubbing is smooth rather
+  // than stepping frame to frame.
+  let repIx = 0;
+  function repSample(time) {
+    const t = repT[0] + time;
+    if (repIx >= repCount - 1 || repT[repIx] > t) repIx = 0;
+    while (repIx < repCount - 2 && repT[repIx + 1] < t) repIx++;
+    const a = repIx, b = Math.min(repIx + 1, repCount - 1);
+    const span = repT[b] - repT[a];
+    const u = span > 1e-6 ? Math.max(0, Math.min(1, (t - repT[a]) / span)) : 0;
+    _rp.set(repP[a * 3], repP[a * 3 + 1], repP[a * 3 + 2]);
+    _rp2.set(repP[b * 3], repP[b * 3 + 1], repP[b * 3 + 2]);
+    _rp.lerp(_rp2, u);
+    _rq.set(repQ[a * 4], repQ[a * 4 + 1], repQ[a * 4 + 2], repQ[a * 4 + 3]);
+    _rq2.set(repQ[b * 4], repQ[b * 4 + 1], repQ[b * 4 + 2], repQ[b * 4 + 3]);
+    _rq.slerp(_rq2, u);
+    return { thr: repExtra[a * 2], spd: repExtra[a * 2 + 1] };
+  }
+
+  function repCamName() { return REP_CAMS[repCamIx]; }
+
+  function updateReplay(dt) {
+    const dur = repDuration();
+    if (!repPaused) {
+      repHead += dt * REP_SPEEDS[repSpeedIx];
+      if (repHead > dur) { repHead = dur; repPaused = true; }
+    }
+    repHead = Math.max(0, Math.min(dur, repHead));
+
+    const info = repSample(repHead);
+    planeGroup.position.copy(_rp);
+    planeGroup.quaternion.copy(_rq);
+    spinProp(info.thr * PROP_RATE, dt);
+
+    // The crash is part of the flight, so it goes off when the playhead
+    // reaches the end and is put away again if you scrub back before it.
+    if (repHead >= dur - 1e-3 && !repBlasted) {
+      repBlasted = true;
+      startBlast(planeGroup.position.clone(), new THREE.Vector3());
+    } else if (repHead < dur - 0.05 && repBlasted) {
+      repBlasted = false;
+      clearBlast();
+      planeGroup.visible = true;
+    }
+
+    // Keep the world and the light following whatever we are looking at.
+    _rdir.set(0, 0, -1).applyQuaternion(_rq);
+    _rright.set(1, 0, 0).applyQuaternion(_rq);
+
+    const cam = repCamName();
+    if (cam === 'FREE') {
+      // Fly the camera itself: the same keys as the aeroplane, plus Shift.
+      const fast = (keys['ShiftLeft'] || keys['ShiftRight']) ? 4 : 1;
+      const step = 60 * fast * dt;
+      if (keys['KeyA']) repFreeYaw += 1.4 * dt;
+      if (keys['KeyD']) repFreeYaw -= 1.4 * dt;
+      if (keys['KeyR']) repFreePitch = Math.min(1.4, repFreePitch + 1.0 * dt);
+      if (keys['KeyF']) repFreePitch = Math.max(-1.4, repFreePitch - 1.0 * dt);
+      const look = new THREE.Vector3(
+        -Math.sin(repFreeYaw) * Math.cos(repFreePitch),
+        Math.sin(repFreePitch),
+        -Math.cos(repFreeYaw) * Math.cos(repFreePitch));
+      const side = new THREE.Vector3(look.z, 0, -look.x).normalize();
+      if (keys['KeyW']) repFree.addScaledVector(look, step);
+      if (keys['KeyS']) repFree.addScaledVector(look, -step);
+      if (keys['KeyQ']) repFree.addScaledVector(side, -step);
+      if (keys['KeyE']) repFree.addScaledVector(side, step);
+      camera.up.set(0, 1, 0);
+      camera.position.copy(repFree);
+      camera.lookAt(_rp2.copy(repFree).add(look));
+      camera.fov = 62; camera.near = 0.5;
+      cockpitGroup.visible = false;
+    } else if (cam === 'COCKPIT' || cam === 'WING') {
+      const v = cam === 'COCKPIT' ? VIEWS[1] : VIEWS[2];
+      camera.position.copy(_rp).add(_rp2.copy(v.offset).applyQuaternion(_rq));
+      camera.up.set(0, 1, 0).applyQuaternion(_rq);
+      camera.lookAt(_rp2.copy(_rp).addScaledVector(_rdir, v.ahead));
+      camera.fov = v.fov; camera.near = v.near;
+      cockpitGroup.visible = cam === 'COCKPIT';
+    } else if (cam === 'ORBIT') {
+      const a = elapsed * 0.35;
+      camera.up.set(0, 1, 0);
+      camera.position.set(_rp.x + Math.sin(a) * 42, _rp.y + 13, _rp.z + Math.cos(a) * 42);
+      camera.lookAt(_rp);
+      camera.fov = 62; camera.near = 0.5;
+      cockpitGroup.visible = false;
+    } else {
+      camera.up.set(0, 1, 0);
+      camera.position.copy(_rp).addScaledVector(_rdir, -32).addScaledVector(_rright, 8);
+      camera.position.y += 8;
+      camera.lookAt(_rp2.copy(_rp).addScaledVector(_rdir, 22));
+      camera.fov = 70; camera.near = 0.5;
+      cockpitGroup.visible = false;
+    }
+    camera.updateProjectionMatrix();
+
+    if (cockpitGroup.visible) {
+      const pitch = Math.asin(Math.max(-1, Math.min(1, _rdir.y)));
+      const up2 = new THREE.Vector3(0, 1, 0).applyQuaternion(_rq);
+      const bank = -Math.atan2(_rright.y, up2.y);
+      const hdg = ((Math.atan2(-_rdir.x, -_rdir.z) * 180 / Math.PI) % 360 + 360) % 360;
+      updateInstruments(info.spd, _rp.y * 3.28, hdg, pitch, bank, 0, info.thr);
+    }
+
+    drawReplayBar(dur);
+  }
+
+  function drawReplayBar(dur) {
+    const bar = document.getElementById('replaybar');
+    if (!repHudOn) { bar.style.visibility = 'hidden'; return; }
+    bar.style.visibility = 'visible';
+    const pct = dur > 0 ? (repHead / dur) * 100 : 0;
+    bar.innerHTML =
+      '<div class="rb-line"><b>' + repHead.toFixed(1) + '</b> / ' + dur.toFixed(1) + ' s'
+      + '   ' + (repPaused ? 'PAUSED' : 'PLAYING')
+      + '   ' + REP_SPEEDS[repSpeedIx] + 'x'
+      + '   ' + repCamName()
+      + '</div><div class="rb-track"><i style="width:' + pct.toFixed(2) + '%"></i></div>'
+      + '<div class="rb-keys">SPACE play &middot; &larr;&rarr; scrub &middot; &uarr;&darr; speed'
+      + ' &middot; C camera &middot; H hide &middot; ESC back'
+      + (repCamName() === 'FREE' ? ' &middot; WQSE move, R/F look, SHIFT fast' : '') + '</div>';
   }
 
   // ===== CRASH =====
@@ -2813,6 +3031,9 @@ canvas { display: block; }
     velocity.set(0, 0, -START_SPEED);
     glideCeiling = START_ALT;
     runStart = elapsed;
+    repCount = 0;
+    replaying = false;
+    document.getElementById('replaybar').classList.add('hidden');
     resetGates();
     if (TARGET_MAP) {
       // Start out over the plain so the target has to be flown to, not
@@ -2833,6 +3054,34 @@ canvas { display: block; }
 
   window.addEventListener('keydown', e => {
     keys[e.code] = true;
+
+    if (replaying) {
+      const dur = repDuration();
+      const nudge = e.shiftKey ? 2 : 0.25;
+      if (e.code === 'Space') { e.preventDefault(); repPaused = !repPaused; return; }
+      if (e.code === 'ArrowLeft')  { e.preventDefault(); repPaused = true; repHead = Math.max(0, repHead - nudge); return; }
+      if (e.code === 'ArrowRight') { e.preventDefault(); repPaused = true; repHead = Math.min(dur, repHead + nudge); return; }
+      if (e.code === 'ArrowUp')    { e.preventDefault(); repSpeedIx = Math.min(REP_SPEEDS.length - 1, repSpeedIx + 1); return; }
+      if (e.code === 'ArrowDown')  { e.preventDefault(); repSpeedIx = Math.max(0, repSpeedIx - 1); return; }
+      if (e.code === 'KeyC') { repCamIx = (repCamIx + 1) % REP_CAMS.length;
+        if (repCamName() === 'FREE') repFree.copy(camera.position);
+        toast('CAMERA: ' + repCamName()); return; }
+      if (e.code === 'KeyH') { repHudOn = !repHudOn; return; }
+      if (e.code === 'KeyT') { applyTime(timeIndex + 1, true); return; }
+      if (e.code === 'KeyM') { Sound.init(); Sound.toggle(); return; }
+      if (e.code === 'Home') { repHead = 0; repPaused = true; return; }
+      if (e.code === 'End')  { repHead = dur; repPaused = true; return; }
+      if (e.code === 'Escape' || e.code === 'Enter') { leaveReplay(); return; }
+      return;                                   // nothing else reaches the game
+    }
+
+    // R after a crash flies the whole thing again with a camera.
+    if (e.code === 'KeyR' && crashed && !TRAILER && repCount > 1) {
+      e.preventDefault();
+      enterReplay();
+      return;
+    }
+
     if (TRAILER) {
       // Space holds the frame; any number shows or hides the timecode.
       if (e.code === 'Space') {
@@ -2861,6 +3110,7 @@ canvas { display: block; }
   // this window and starts the flight.
   window.addEventListener('mousedown', () => {
     window.focus();
+    if (replaying) return;
     advance();
   });
 
