@@ -1538,9 +1538,9 @@ canvas { display: block; }
   const SHOTS = [
     // t: time of day, d: seconds, cam: framing, then the aeroplane's path:
     // alt above ground, speed m/s, turn rad/s, bank rad, climb m/s.
-    // rate slows the approach without shortening it, so the opening can run
-    // longer and still cut away while the aeroplane is moving.
-    { t: 'DAWN',   d: 7.0, cam: 'hero',    intro: true, rate: 0.68 },
+    // Opens over the tail, flying straight into the sunrise.
+    { t: 'DAWN',   d: 7.0, cam: 'follow',  alt: 230, speed: 92,  turn: 0.012, bank: 0.06, climb: 1,
+      sunward: true },
     // From here it is mostly flown from the aeroplane, because that is what
     // playing it looks like. The one outside shot left is the crash, which
     // there is no way to watch from inside.
@@ -1635,7 +1635,9 @@ canvas { display: block; }
 
     // Start each flying shot near the hero spot, on a fresh heading, so the
     // sequence stays over the good-looking part of the world.
-    tHeading = (i * 1.9) % (Math.PI * 2);
+    tHeading = sh.sunward
+      ? Math.atan2(-SUN_DIR.x, -SUN_DIR.z)     // nose pointed at the sunrise
+      : (i * 1.9) % (Math.PI * 2);
     tPitch = 0;
     tBank = sh.bank;
     _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
@@ -1718,6 +1720,7 @@ canvas { display: block; }
   function mountFor(cam) {
     if (cam === 'cockpit') return VIEWS[1];
     if (cam === 'wing') return VIEWS[2];
+    if (cam === 'follow') return VIEWS[3];
     return null;
   }
   const _tmount = new THREE.Vector3();
@@ -1727,7 +1730,7 @@ canvas { display: block; }
     _tr.set(_tf.z, 0, -_tf.x);
     const up = new THREE.Vector3(0, 1, 0);
 
-    if (sh.cam === 'cockpit' || sh.cam === 'wing') {
+    if (sh.cam === 'cockpit' || sh.cam === 'wing' || sh.cam === 'follow') {
       // Framed exactly as the game frames a mounted view, read from the same
       // table the game uses, so the trailer cannot drift away from what
       // anybody actually sees when they play. This matters most for the wing:
@@ -1845,7 +1848,7 @@ canvas { display: block; }
     repExtra[i * 2 + 1] = airspeed;
   }
 
-  const REP_CAMS = ['CHASE', 'COCKPIT', 'WING', 'ORBIT', 'FREE'];
+  const REP_CAMS = ['CHASE', 'TAIL', 'COCKPIT', 'WING', 'ORBIT', 'FREE'];
   const REP_SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
 
   let replaying = false;
@@ -1962,8 +1965,8 @@ canvas { display: block; }
       camera.lookAt(_rp2.copy(repFree).add(look));
       camera.fov = 62; camera.near = 0.5;
       cockpitGroup.visible = false;
-    } else if (cam === 'COCKPIT' || cam === 'WING') {
-      const v = cam === 'COCKPIT' ? VIEWS[1] : VIEWS[2];
+    } else if (cam === 'COCKPIT' || cam === 'WING' || cam === 'TAIL') {
+      const v = cam === 'COCKPIT' ? VIEWS[1] : cam === 'WING' ? VIEWS[2] : VIEWS[3];
       camera.position.copy(_rp).add(_rp2.copy(v.offset).applyQuaternion(_rq));
       camera.up.set(0, 1, 0).applyQuaternion(_rq);
       camera.lookAt(_rp2.copy(_rp).addScaledVector(_rdir, v.ahead));
@@ -2816,6 +2819,9 @@ canvas { display: block; }
     { name: 'CHASE',   fov: 70, offset: new THREE.Vector3(0, 6, 28),   ahead: -25, rigid: false, near: 0.5 },
     { name: 'COCKPIT', fov: 80, offset: EYE,                            ahead: 300, rigid: true,  near: 0.18 },
     { name: 'WING',    fov: 62, offset: new THREE.Vector3(7.4, 1.5, 1.8), ahead: 0, rigid: true,  near: 0.5 },
+    // Just above and behind the tail, looking out past the nose. Rigid, so it
+    // rolls with the aeroplane rather than swimming behind it.
+    { name: 'TAIL',    fov: 66, offset: new THREE.Vector3(0, 3.2, 13.5), ahead: 60, rigid: true, near: 0.5 },
   ];
   let viewIndex = 0;
   function setView(i, announce) {
