@@ -18,7 +18,9 @@ var GAMES = [
   'sheep-and-tree-world'
 ];
 
-function doGet() {
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  if (p.board) return json(topOf(p.board));
   var week = isoWeek(new Date());
   var state = read(week);
   return json({ week: week, stamp: state.stamp, votes: state.votes });
@@ -31,6 +33,8 @@ function doPost(e) {
   } catch (err) {
     /* Not JSON. Fall through and let the game check below reject it. */
   }
+
+  if (body.action === 'score') return submitScore(body);
 
   /* The week is worked out here, never taken from the browser. Otherwise
      anyone could post votes into next month. */
@@ -116,4 +120,118 @@ function resetThisWeek() {
   // Reading it back builds a fresh round, so anyone who already voted this
   // week is free to vote again.
   Logger.log('Cleared ' + week + ', new round ' + read(week).stamp);
+}
+
+/* ---------------------------------------------------------------- leaderboards
+ *
+ * Each player's browser holds a random code it never shows anyone. An entry is
+ * filed under that code, so writing a different name renames the entry the
+ * player already has rather than creating a second one.
+ *
+ * Codes are never sent back out. The board that reaches the page is names and
+ * numbers only, so one player cannot learn another's code and post as them.
+ */
+
+var BOARDS = {
+  // Lowest altitude you died at, in feet. Lower wins. The floor is the
+  // deepest trench in the world, about -179 ft, so anything past the bound
+  // below did not come from playing the game.
+  'low-crash': { lower: true, min: -220, max: 200000 }
+};
+var BOARD_KEEP = 50;      // a script property holds 9 kB; 50 entries is well under
+
+function submitScore(body) {
+  var spec = BOARDS[body.board];
+  if (!spec) return json({ error: 'unknown board' });
+
+  var code = String(body.code || '');
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(code)) return json({ error: 'bad code' });
+
+  var value = Number(body.value);
+  if (!isFinite(value)) return json({ error: 'bad score' });
+  value = Math.round(value);
+  if (value < spec.min || value > spec.max) return json({ error: 'bad score' });
+
+  var name = cleanName(body.name);
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var all = readBoard(body.board);
+    var mine = all[code];
+    if (!mine) {
+      all[code] = { n: name, v: value };
+    } else {
+      mine.n = name;                                     // a rename always sticks
+      var better = spec.lower ? value < mine.v : value > mine.v;
+      if (better) mine.v = value;
+    }
+    writeBoard(body.board, all);
+    return json(topOf(body.board, code));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* Names are shown to other people, so rather than trying to spot bad input
+ * this keeps only characters a name plausibly needs. Nothing that could be
+ * read as markup survives. The page also renders names as text rather than
+ * HTML, so it would take two mistakes to matter. */
+function cleanName(raw) {
+  var n = String(raw == null ? '' : raw)
+    .replace(/[^A-Za-z0-9 '._-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 16);
+  return n || 'Pilot';
+}
+
+function readBoard(board) {
+  var raw = PropertiesService.getScriptProperties().getProperty('board-' + board);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) || {};
+  } catch (err) {
+    return {};                   // hand-edited into nonsense; start over
+  }
+}
+
+function writeBoard(board, all) {
+  var spec = BOARDS[board];
+  var codes = Object.keys(all);
+
+  // Keep only the best BOARD_KEEP entries, so the stored value cannot grow
+  // past the size a script property is allowed to be.
+  if (codes.length > BOARD_KEEP) {
+    codes.sort(function (a, b) {
+      return spec.lower ? all[a].v - all[b].v : all[b].v - all[a].v;
+    });
+    var trimmed = {};
+    codes.slice(0, BOARD_KEEP).forEach(function (c) { trimmed[c] = all[c]; });
+    all = trimmed;
+  }
+  PropertiesService.getScriptProperties()
+    .setProperty('board-' + board, JSON.stringify(all));
+}
+
+/* The public view: names and scores, never codes. `you` is the caller's own
+ * code, used only to mark their row and report their rank. */
+function topOf(board, you) {
+  var spec = BOARDS[board];
+  if (!spec) return { error: 'unknown board' };
+  var all = readBoard(board);
+  var rows = Object.keys(all).map(function (c) {
+    return { name: all[c].n, value: all[c].v, mine: c === you };
+  });
+  rows.sort(function (a, b) {
+    return spec.lower ? a.value - b.value : b.value - a.value;
+  });
+  var rank = 0;
+  for (var i = 0; i < rows.length; i++) if (rows[i].mine) { rank = i + 1; break; }
+  return { board: board, top: rows.slice(0, 10), rank: rank, entries: rows.length };
+}
+
+function resetBoard(board) {
+  PropertiesService.getScriptProperties().deleteProperty('board-' + (board || 'low-crash'));
+  Logger.log('Cleared board ' + (board || 'low-crash'));
 }

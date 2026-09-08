@@ -51,6 +51,37 @@ canvas { display: block; }
     rgba(4,8,14,0.34) 72%, rgba(4,8,14,0.88) 100%);
 }
 #overlay.hidden { display: none; }
+.board {
+  font-family: 'Courier New', monospace; color: #0f0; font-size: 13px;
+  border: 1px solid rgba(0,255,100,0.35); border-radius: 4px;
+  background: rgba(0,0,0,0.5); padding: 12px 14px; margin: 0 auto 18px;
+  width: 300px; text-align: left; pointer-events: auto;
+}
+.board.hidden { display: none; }
+.board__head { letter-spacing: 2px; opacity: 0.75; margin-bottom: 8px; }
+.board__list { list-style: none; margin: 0 0 8px; padding: 0; counter-reset: r; }
+.board__list li {
+  display: flex; justify-content: space-between; gap: 10px;
+  counter-increment: r; padding: 1px 0;
+}
+.board__list li::before { content: counter(r) "."; opacity: 0.5; width: 22px; }
+.board__list li span:first-of-type { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board__list li.mine { color: #9f6; font-weight: bold; }
+.board__me { opacity: 0.7; margin-bottom: 10px; min-height: 16px; }
+.board__name { display: flex; align-items: center; gap: 6px; }
+.board__name label { opacity: 0.6; letter-spacing: 1px; }
+.board__name input {
+  flex: 1; min-width: 0; background: rgba(0,0,0,0.6); color: #0f0;
+  border: 1px solid rgba(0,255,100,0.35); border-radius: 3px;
+  font: inherit; padding: 3px 6px;
+}
+.board__name input:focus { outline: none; border-color: rgba(0,255,100,0.8); }
+.board__name button {
+  background: rgba(0,255,100,0.14); color: #0f0; font: inherit;
+  border: 1px solid rgba(0,255,100,0.35); border-radius: 3px;
+  padding: 3px 9px; cursor: pointer; letter-spacing: 1px;
+}
+.board__name button:hover { background: rgba(0,255,100,0.26); }
 /* Two screens share the backdrop: the title, then the controls. The aeroplane
    keeps flying behind both. */
 .step {
@@ -170,6 +201,17 @@ canvas { display: block; }
       <div class="sub"></div>
     </div>
     <div class="bottom">
+      <div id="board" class="board hidden">
+        <div class="board__head">LOWEST CRASH</div>
+        <ol class="board__list" id="board-list"></ol>
+        <div class="board__me" id="board-me"></div>
+        <div class="board__name">
+          <label for="pilot-name">NAME</label>
+          <input id="pilot-name" maxlength="16" autocomplete="off" spellcheck="false"
+                 placeholder="Pilot">
+          <button type="button" id="pilot-save">SAVE</button>
+        </div>
+      </div>
       <div class="prompt">Click or press SPACE to continue</div>
       <div class="seed" id="seed-line"></div>
     </div>
@@ -1192,6 +1234,15 @@ canvas { display: block; }
         // covered the whole thing. Hold it until the fireball has had its
         // moment; pressing space before then still restarts immediately.
         const hitSpeed = Math.floor(airspeed);
+
+        // The score is the height of the ground you actually hit, not the
+        // aeroplane's position on the frame it was noticed. A steep dive
+        // overshoots further in one frame than a shallow one, and a slower
+        // machine overshoots further still, so using the raw position would
+        // hand better scores to worse computers.
+        const hitFeet = Math.round((terrainH + 2) * 3.28);
+        submitCrash(hitFeet);
+
         clearTimeout(crashCardTimer);
         crashCardTimer = setTimeout(function () {
           if (!crashed) return;                 // already restarted
@@ -1203,7 +1254,8 @@ canvas { display: block; }
           step.classList.remove('hidden');
           step.querySelector('.kicker').style.display = 'none';
           step.querySelector('h1').textContent = 'CRASHED';
-          step.querySelector('.sub').textContent = 'Speed: ' + hitSpeed + ' kts';
+          step.querySelector('.sub').textContent =
+            hitFeet + ' ft  ' + String.fromCharCode(183) + '  ' + hitSpeed + ' kts';
           step.querySelector('.prompt').textContent = 'Click or press SPACE to restart';
         }, 2100);
         return;
@@ -1527,6 +1579,119 @@ canvas { display: block; }
       );
     }
   }
+
+  // ===== LEADERBOARD =====
+  // Lowest altitude you died at. The browser keeps a random code it never
+  // shows anyone; the server files the entry under that code, so typing a new
+  // name renames the entry you already have instead of making a second one.
+  //
+  // The code is a name tag, not a password. Anyone who got hold of it could
+  // post as you, and clearing site data loses it. For a score table on a
+  // hobby site that is the right trade for never asking anyone to sign up.
+  const BOARD_URL = 'https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec';
+  const BOARD = 'low-crash';
+
+  function pilotCode() {
+    let c = null;
+    try { c = localStorage.getItem('fs-code'); } catch (e) {}
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(c || '')) {
+      const b = new Uint8Array(12);
+      (window.crypto || {}).getRandomValues
+        ? window.crypto.getRandomValues(b)
+        : b.forEach((_, i) => { b[i] = Math.floor(Math.random() * 256); });
+      c = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+      try { localStorage.setItem('fs-code', c); } catch (e) {}
+    }
+    return c;
+  }
+  function pilotName() {
+    try { return localStorage.getItem('fs-name') || ''; } catch (e) { return ''; }
+  }
+  function setPilotName(n) {
+    try { localStorage.setItem('fs-name', n); } catch (e) {}
+  }
+
+  const boardEl = () => document.getElementById('board');
+  let lastScore = null;
+
+  function drawBoard(data) {
+    if (!data || !data.top) return;
+    const list = document.getElementById('board-list');
+    list.innerHTML = '';
+    data.top.forEach(row => {
+      const li = document.createElement('li');
+      if (row.mine) li.className = 'mine';
+      const n = document.createElement('span');
+      n.textContent = row.name;            // text, never markup
+      const v = document.createElement('span');
+      v.textContent = row.value + ' ft';
+      li.appendChild(n); li.appendChild(v);
+      list.appendChild(li);
+    });
+    const me = document.getElementById('board-me');
+    me.textContent = data.rank
+      ? 'You are ' + data.rank + ' of ' + data.entries
+      : (data.entries ? data.entries + ' pilots so far' : '');
+    boardEl().classList.remove('hidden');
+  }
+
+  function sendScore(value, name) {
+    const body = {
+      action: 'score', board: BOARD, code: pilotCode(),
+      name: name === undefined ? pilotName() : name
+    };
+    if (value !== null) body.value = value;
+    // text/plain keeps this a simple request, so the browser sends it straight
+    // through instead of asking permission with an OPTIONS call Apps Script
+    // cannot answer.
+    return fetch(BOARD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    }).then(r => r.json());
+  }
+
+  function submitCrash(feet) {
+    lastScore = feet;
+    document.getElementById('board-me').textContent = 'Sending...';
+    boardEl().classList.remove('hidden');
+    sendScore(feet)
+      .then(data => {
+        // An older copy of the script answers, but knows nothing about boards.
+        // Say so rather than leaving "Sending..." up for ever.
+        if (!data || !data.top) {
+          document.getElementById('board-list').innerHTML = '';
+          document.getElementById('board-me').textContent = 'Leaderboard not set up yet';
+          return;
+        }
+        drawBoard(data);
+      })
+      .catch(() => {
+        document.getElementById('board-me').textContent = 'Leaderboard unreachable';
+      });
+  }
+
+  // Typing must not fly the aeroplane, and clicking the panel must not restart
+  // the flight: both space and mousedown are wired to advance().
+  (function wireBoard() {
+    const panel = boardEl();
+    const input = document.getElementById('pilot-name');
+    const save = document.getElementById('pilot-save');
+    input.value = pilotName();
+    panel.addEventListener('mousedown', e => e.stopPropagation());
+    input.addEventListener('keydown', e => e.stopPropagation());
+    function commit() {
+      const n = input.value.trim();
+      setPilotName(n);
+      input.blur();
+      sendScore(lastScore, n).then(drawBoard).catch(() => {});
+    }
+    save.addEventListener('click', commit);
+    input.addEventListener('keyup', e => {
+      e.stopPropagation();
+      if (e.key === 'Enter') commit();
+    });
+  })();
 
   // ===== TITLE SEQUENCE =====
   // Before the first flight the aeroplane comes in along a curve and settles
@@ -1902,6 +2067,7 @@ canvas { display: block; }
     if (playing) return;
     clearTimeout(crashCardTimer);
     clearBlast();
+    document.getElementById('board').classList.add('hidden');
     playing = true; crashed = false;
 
     // A different light every flight - dawn, midday or dusk, never night.

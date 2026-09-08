@@ -90,6 +90,25 @@ Deleting the `votes-<week>` row by hand in Project Settings works the same
 way, because the entry is rebuilt with a fresh round the next time anyone
 loads the page.
 
+## The flight sim leaderboard
+
+The same script also holds the flight sim's lowest-crash board, so there is
+nothing extra to set up: redeploy after pasting the file and it works.
+
+Each player's browser makes a random code once and keeps it. Entries are filed
+under that code, so writing a different name renames the entry a player
+already has rather than adding a second one. Codes are never sent back out of
+the script, so nobody can learn someone else's and post as them.
+
+The code is a name tag rather than a password. Somebody who got hold of one
+could post as that player, and clearing site data loses it. For a score table
+on a hobby site that is the right trade for never asking anyone to sign up.
+
+Scores outside the range a real flight could produce are refused, and only the
+best 50 are kept so the stored value stays inside the size a script property
+is allowed to be. To wipe the board, run **resetBoard** from the editor's
+function dropdown.
+
 ## Changing it later
 
 Editing the script is not enough on its own: Apps Script keeps serving the
