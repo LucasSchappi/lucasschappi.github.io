@@ -357,8 +357,12 @@
      A static site cannot count votes on its own, so this talks to a small
      API. Set POLL_ENDPOINT to switch it on; while it is empty, or if the
      request fails, the section stays hidden and the page is simply without
-     it. See docs/poll-api.md for the API this expects. */
-  var POLL_ENDPOINT = "https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec";
+     it. See docs/poll-setup.md for the backend this expects.
+
+     Switched off for now. The Apps Script endpoint still works; putting its
+     URL back between these quotes is all it takes to bring the poll back,
+     along with the favourite-game card that reads from it. */
+  var POLL_ENDPOINT = "";
 
   var poll = document.querySelector("[data-poll]");
   if (poll && POLL_ENDPOINT) {
