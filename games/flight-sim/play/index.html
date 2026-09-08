@@ -52,6 +52,9 @@ canvas { display: block; }
     rgba(4,8,14,0.34) 72%, rgba(4,8,14,0.88) 100%);
 }
 #overlay.hidden { display: none; }
+/* Nothing but the title over the fly-in: the instruments have nothing to
+   report yet, and they cut across the shot. */
+#hud.titlescreen { display: none; }
 .board {
   font-family: 'Courier New', monospace; color: #0f0; font-size: 13px;
   border: 1px solid rgba(0,255,100,0.35); border-radius: 4px;
@@ -127,6 +130,11 @@ canvas { display: block; }
 #overlay .sub { color: #0f0; font-family: 'Courier New', monospace; font-size: 16px; min-height: 20px; }
 #step-title .bottom { animation: titleIn 0.9s ease-out 1.5s both; }
 #overlay.instant .bottom { animation: none; }
+/* The prompt only appears once the fly-in has finished, because pressing
+   anything before that does nothing. */
+#step-title .prompt { visibility: hidden; }
+#step-title.ready .prompt { visibility: visible; }
+#overlay.instant #step-title .prompt { visibility: visible; }
 #overlay .prompt {
   color: #eef2f6; font-size: 20px; font-family: 'Segoe UI', Arial, sans-serif;
   animation: pulse 1.5s infinite; text-shadow: 0 2px 10px rgba(0,0,0,0.9);
@@ -1211,6 +1219,15 @@ canvas { display: block; }
     Sound.update(throttle, airspeed, playing && !crashed, stalling, elapsed);
     if (!playing) updateChallengeHud();
 
+    // The title screen is the fly-in and the title, and nothing else. The
+    // crash card keeps its instruments, since the final readings are the
+    // interesting part of a crash.
+    const onTitle = !playing && !crashed;
+    document.getElementById('hud').classList.toggle('titlescreen', onTitle);
+    if (CHALLENGE) {
+      document.getElementById('challenge-banner').classList.toggle('hidden', onTitle);
+    }
+
     // Runs before the early return below, so the wreck keeps burning while
     // the flight itself is over.
     updateBlast(dt);
@@ -2024,6 +2041,7 @@ canvas { display: block; }
   // screen - not after a crash, where the camera should stay on the wreck.
   const INTRO_IN = 5.0;                     // seconds of fly-in
   let introTime = 0;
+  let introDone = false;      // the fly-in has finished and the prompt is live
   const WORLD_UP = new THREE.Vector3(0, 1, 0);
   const heroPos = new THREE.Vector3();
   const heroDir = new THREE.Vector3();
@@ -2125,6 +2143,10 @@ canvas { display: block; }
       const bank = turnBank + (heroBank - turnBank) * (settle * settle * (3 - 2 * settle));
       introPose(_tan, bank, planeGroup.quaternion);
     } else {
+      if (!introDone) {
+        introDone = true;
+        document.getElementById('step-title').classList.add('ready');
+      }
       // Parked in the pose, breathing a little so it is not a still frame.
       const s = introTime - INTRO_IN;
       planeGroup.position.y += Math.sin(s * 0.55) * 1.7;
@@ -2374,9 +2396,12 @@ canvas { display: block; }
   // Title first, controls second, then fly. A click or SPACE moves it along.
   let stage = 0;
   function advance() {
-    Sound.init();
+    Sound.init();       // still worth doing: a key press is what unlocks audio
     if (crashed || playing) { startFlight(); return; }
     if (stage === 0) {
+      // The aeroplane is still flying in. Let it arrive before moving on,
+      // rather than cutting the shot off half way through.
+      if (introTime < INTRO_IN) return;
       stage = 1;
       document.getElementById('step-title').classList.add('hidden');
       document.getElementById('step-controls').classList.remove('hidden');
