@@ -584,6 +584,15 @@
   var POLL_ENDPOINT = "https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec";
 
   var poll = document.querySelector("[data-poll]");
+  // The card is driven by the poll, so showing it before the votes arrive
+  // means showing a game of the day and then swapping it for the favourite a
+  // moment later. Hidden here, revealed as soon as there is an answer either
+  // way. Done in script rather than in the markup so that a visitor with no
+  // JavaScript, who will never get an answer, still sees a real game.
+  function revealFeatured() {
+    if (featured) featured.hidden = false;
+  }
+
   if (POLL_ENDPOINT && (poll || featured)) {
     var POLL_GAMES = [
       { id: "flight-sim", name: "Schappi’s Flight Simulator",
@@ -757,10 +766,18 @@
         forgetOldRounds();
         render(data.votes || {}, myVote());
         highlightFavourite(data.votes || {});
+        revealFeatured();
         // Only now is there anything worth showing.
         if (poll) poll.hidden = false;
       })
-      .catch(function () { /* leave the section hidden */ });
+      .catch(function () {
+        // No answer. The card falls back to the game of the day it was
+        // already showing underneath, rather than never appearing at all.
+        revealFeatured();
+      });
   }
+
+  // Nothing is going to fetch anything, so do not make the page wait.
+  if (!POLL_ENDPOINT) revealFeatured();
 
 })();

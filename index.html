@@ -71,6 +71,24 @@
     </div>
   </section>
 
+  <script>
+    // Hidden the instant this is parsed, before the page is painted, so the
+    // card cannot appear as a game of the day and then change its mind to the
+    // favourite once the votes land. assets/js/site.js reveals it as soon as
+    // there is an answer either way.
+    //
+    // Inline rather than a hidden attribute in the markup, so that a visitor
+    // with no JavaScript - who will never get an answer - still sees a game
+    // rather than a hole in the page. The timer is the same idea for anyone
+    // whose script never loads at all.
+    (function () {
+      var card = document.currentScript.previousElementSibling;
+      if (!card) return;
+      card.hidden = true;
+      setTimeout(function () { card.hidden = false; }, 4000);
+    })();
+  </script>
+
   <section class="section section--alt">
     <div class="wrap">
       <div class="section-head">
