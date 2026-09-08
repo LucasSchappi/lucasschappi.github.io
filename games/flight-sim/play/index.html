@@ -55,6 +55,14 @@ canvas { display: block; }
 /* Nothing but the title over the fly-in: the instruments have nothing to
    report yet, and they cut across the shot. */
 #hud.titlescreen { display: none; }
+/* Trailer only: which shot this is, for deciding what to change. */
+#timecode {
+  position: absolute; left: 14px; bottom: 14px; z-index: 30;
+  font-family: 'Courier New', monospace; font-size: 13px; color: #0f0;
+  background: rgba(0,0,0,0.55); border: 1px solid rgba(0,255,100,0.3);
+  border-radius: 4px; padding: 6px 10px; letter-spacing: 1px;
+  pointer-events: none; white-space: pre;
+}
 .board {
   font-family: 'Courier New', monospace; color: #0f0; font-size: 13px;
   border: 1px solid rgba(0,255,100,0.35); border-radius: 4px;
@@ -213,6 +221,7 @@ canvas { display: block; }
   </div>
   <div id="toast"></div>
 </div>
+<div id="timecode" style="display:none"></div>
 <div id="challenge-banner" class="hidden">
   <div id="cb-name"></div>
   <div class="cb-sub" id="cb-live"></div>
@@ -639,7 +648,10 @@ canvas { display: block; }
     vertexColors: true, roughness: 0.9, metalness: 0.02,
   });
   const nearGeo = buildTile(TERRAIN_SEGS);
-  const farGeo = buildTile(TERRAIN_SEGS_FAR);
+  // The eight tiles around the middle one are normally coarse, which shows as
+  // a blockier horizon. For a recording the frame rate matters far less than
+  // the picture, so every tile gets the full detail.
+  const farGeo = TRAILER ? nearGeo : buildTile(TERRAIN_SEGS_FAR);
   const nearTile = new THREE.Mesh(nearGeo, terrainMat);
   nearTile.receiveShadow = true;
   worldGroup.add(nearTile);
@@ -881,7 +893,7 @@ canvas { display: block; }
   // Only built once and only shown from the cockpit view, so it costs nothing
   // the rest of the time. Everything sits at least 0.4 in front of the eye
   // point so the near clip plane never slices through it.
-  const EYE = new THREE.Vector3(0, 0.50, -1.00);
+  const EYE = new THREE.Vector3(0, 0.64, -1.00);
   const cockpitGroup = new THREE.Group();
   cockpitGroup.visible = false;
   planeGroup.add(cockpitGroup);
@@ -1193,6 +1205,7 @@ canvas { display: block; }
     let dt = (now - prevTime) / 1000;
     prevTime = now;
     if (dt > 0.1) dt = 0.1;
+    if (trailerPaused) dt = 0;                 // freeze everything, not just the shot
     elapsed += dt;
 
     // Animate water
@@ -1476,24 +1489,42 @@ canvas { display: block; }
   // Positions are integrated frame by frame rather than solved, which keeps
   // curved paths to two lines apiece.
   const SHOTS = [
-    // t: time of day, d: seconds, cam: framing, and the aeroplane's path.
+    // t: time of day, d: seconds, cam: framing, then the aeroplane's path:
+    // alt above ground, speed m/s, turn rad/s, bank rad, climb m/s.
     { t: 'DAWN',   d: 5.0, cam: 'hero',    intro: true },
-    { t: 'DAWN',   d: 4.5, cam: 'ground',  alt: 55,  speed: 92, turn: 0,      bank: 0.10, climb: 0 },
-    { t: 'MIDDAY', d: 4.5, cam: 'chase',   alt: 210, speed: 96, turn: 0.16,   bank: 0.62, climb: 2 },
-    { t: 'MIDDAY', d: 3.5, cam: 'wing',    alt: 240, speed: 96, turn: -0.12,  bank: -0.5, climb: -4 },
-    { t: 'DUSK',   d: 4.0, cam: 'cockpit', alt: 300, speed: 90, turn: 0.05,   bank: 0.18, climb: -6 },
-    { t: 'DUSK',   d: 4.5, cam: 'orbit',   alt: 260, speed: 88, turn: 0,      bank: 0.05, climb: 0 },
-    { t: 'NIGHT',  d: 3.5, cam: 'ground',  alt: 70,  speed: 98, turn: 0,      bank: 0.14, climb: 0 },
+    { t: 'DAWN',   d: 4.0, cam: 'ground',  alt: 55,  speed: 92,  turn: 0,     bank: 0.10, climb: 0 },
+    // Low over the water with the instruments live: this is what playing it
+    // actually looks like, which is the point of a trailer.
+    { t: 'DAWN',   d: 5.0, cam: 'cockpit', alt: 60,  speed: 95,  turn: 0.10,  bank: 0.42, climb: 0 },
+    { t: 'MIDDAY', d: 4.0, cam: 'chase',   alt: 150, speed: 96,  turn: 0.18,  bank: 0.66, climb: 3 },
+    { t: 'MIDDAY', d: 4.0, cam: 'wing',    alt: 90,  speed: 98,  turn: -0.16, bank: -0.6, climb: 0 },
+    { t: 'MIDDAY', d: 4.0, cam: 'cockpit', alt: 70,  speed: 94,  turn: -0.05, bank: -0.2, climb: 14 },
+    { t: 'DUSK',   d: 4.0, cam: 'orbit',   alt: 240, speed: 88,  turn: 0,     bank: 0.05, climb: 0 },
+    { t: 'DUSK',   d: 3.5, cam: 'wing',    alt: 130, speed: 92,  turn: 0.14,  bank: 0.55, climb: -6 },
+    { t: 'NIGHT',  d: 3.5, cam: 'ground',  alt: 70,  speed: 98,  turn: 0,     bank: 0.14, climb: 0 },
     { t: 'DUSK',   d: 4.5, cam: 'ground',  alt: 180, speed: 110, turn: 0.03,  bank: 0.2,  climb: -46, dive: true },
     { t: 'DAWN',   d: 5.0, cam: 'hero',    title: true }
   ];
 
   let shotIndex = -1, shotTime = 0, shotDone = false;
+  let trailerPaused = false, trailerClock = 0;
   const tPos = new THREE.Vector3();
   let tHeading = 0, tBank = 0, tPitch = 0;
   const camAnchor = new THREE.Vector3();
   const _te = new THREE.Euler(0, 0, 0, 'YXZ');
   const _tv = new THREE.Vector3(), _tf = new THREE.Vector3(), _tr = new THREE.Vector3();
+
+  // A timecode for working out which shot to change. Off by default, since
+  // the point of the trailer is that nothing is on screen.
+  function showTimecode() {
+    const el = document.getElementById('timecode');
+    if (!el || el.style.display === 'none') return;
+    const sh = SHOTS[shotIndex] || {};
+    el.textContent = trailerClock.toFixed(1) + 's   shot ' + (shotIndex + 1) + '/'
+      + SHOTS.length + '   ' + (sh.cam || '') + ' ' + (sh.t || '')
+      + '   ' + shotTime.toFixed(1) + '/' + (sh.d || 0) + 's'
+      + (trailerPaused ? '   PAUSED' : '');
+  }
 
   function beginShot(i) {
     shotIndex = i;
@@ -1513,6 +1544,9 @@ canvas { display: block; }
       }
       planeGroup.visible = true;
       clearBlast();
+      cockpitGroup.visible = false;
+      camera.fov = 70; camera.near = 0.5;
+      camera.updateProjectionMatrix();
       return;
     }
 
@@ -1534,25 +1568,36 @@ canvas { display: block; }
     }
     planeGroup.visible = true;
     clearBlast();
+
+    // Each mount wants its own lens, and only the cockpit shot wants an
+    // interior drawn. Nothing else in the trailer calls setView.
+    cockpitGroup.visible = sh.cam === 'cockpit';
+    camera.fov = sh.cam === 'cockpit' ? 80 : sh.cam === 'wing' ? 62 : 70;
+    camera.near = sh.cam === 'cockpit' ? 0.18 : 0.5;
+    camera.updateProjectionMatrix();
   }
+
+  const WING_SEAT = new THREE.Vector3(7.4, 1.5, 1.8);
 
   function frameShot(sh, u) {
     _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
     _tr.set(_tf.z, 0, -_tf.x);
     const up = new THREE.Vector3(0, 1, 0);
 
+    if (sh.cam === 'cockpit' || sh.cam === 'wing') {
+      // Bolted to the aeroplane: the camera banks with it, and the horizon
+      // tilts the way it does when you are the one flying.
+      const seat = sh.cam === 'cockpit' ? EYE : WING_SEAT;
+      camera.position.copy(planeGroup.position)
+        .add(_tv.copy(seat).applyQuaternion(planeGroup.quaternion));
+      camera.quaternion.copy(planeGroup.quaternion);
+      return;
+    }
+
     if (sh.cam === 'chase') {
       camera.position.copy(tPos).addScaledVector(_tf, -34).addScaledVector(_tr, 9);
       camera.position.y += 9;
       camera.lookAt(_tv.copy(tPos).addScaledVector(_tf, 24));
-    } else if (sh.cam === 'wing') {
-      camera.position.copy(tPos).addScaledVector(_tr, 8.2);
-      camera.position.y += 1.6;
-      camera.lookAt(_tv.copy(tPos).addScaledVector(_tf, 40).addScaledVector(_tr, -4));
-    } else if (sh.cam === 'cockpit') {
-      camera.position.copy(tPos).addScaledVector(_tf, -1.0);
-      camera.position.y += 0.5;
-      camera.lookAt(_tv.copy(tPos).addScaledVector(_tf, 300));
     } else if (sh.cam === 'orbit') {
       const a = u * Math.PI * 1.15;
       camera.position.set(
@@ -1570,6 +1615,8 @@ canvas { display: block; }
     if (shotIndex < 0) beginShot(0);
     const sh = SHOTS[shotIndex];
     shotTime += dt;
+    trailerClock += dt;
+    showTimecode();
 
     if (sh.intro || sh.title) {
       updateIntro(dt);                           // the fly-in and the hero pose
@@ -1595,6 +1642,17 @@ canvas { display: block; }
         planeGroup.quaternion.setFromEuler(_te);
         propGroup.rotation.z += dt * 52;
       }
+      // The instruments are normally driven from the flight loop, which does
+      // not run here. Dead gauges would give the cockpit shot away instantly.
+      if (cockpitGroup.visible) {
+        const hdg = ((-tHeading * 180 / Math.PI) % 360 + 360) % 360;
+        updateInstruments(sh.speed * 1.94, tPos.y * 3.28, hdg,
+          tPitch, sh.bank, (sh.climb || 0) * 196.85, throttle);
+        stickPivot.rotation.x = -tPitch * 0.9;
+        stickPivot.rotation.z = -sh.bank * 0.45;
+        throttlePivot.rotation.x = 0.55 - throttle * 1.05;
+      }
+
       frameShot(sh, Math.min(1, shotTime / sh.d));
     }
 
@@ -2608,6 +2666,21 @@ canvas { display: block; }
 
   window.addEventListener('keydown', e => {
     keys[e.code] = true;
+    if (TRAILER) {
+      // Space holds the frame; any number shows or hides the timecode.
+      if (e.code === 'Space') {
+        e.preventDefault();
+        trailerPaused = !trailerPaused;
+        showTimecode();
+        return;
+      }
+      if (/^(Digit|Numpad)[0-9]$/.test(e.code)) {
+        const el = document.getElementById('timecode');
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        showTimecode();
+        return;
+      }
+    }
     if (e.code === 'Space') { e.preventDefault(); advance(); }
     if (e.code === 'KeyF') flaps = !flaps;
     if (e.code === 'KeyC') setView(viewIndex + 1, true);
