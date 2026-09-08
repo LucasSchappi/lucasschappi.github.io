@@ -1093,6 +1093,10 @@ canvas { display: block; }
 
     Sound.update(throttle, airspeed, playing && !crashed, stalling, elapsed);
 
+    // Runs before the early return below, so the wreck keeps burning while
+    // the flight itself is over.
+    updateBlast(dt);
+
     if (!playing && !crashed) updateIntro(dt);
 
     // These follow the aeroplane and the camera, so they have to run during the
@@ -1170,16 +1174,26 @@ canvas { display: block; }
         crashed = true; playing = false;
         stalling = false;
         Sound.crash();
-        const overlay = document.getElementById('overlay');
-        overlay.classList.remove('hidden');
-        overlay.classList.add('instant');
-        document.getElementById('step-controls').classList.add('hidden');
-        const step = document.getElementById('step-title');
-        step.classList.remove('hidden');
-        step.querySelector('.kicker').style.display = 'none';
-        step.querySelector('h1').textContent = 'CRASHED';
-        step.querySelector('.sub').textContent = 'Speed: ' + Math.floor(airspeed) + ' kts';
-        step.querySelector('.prompt').textContent = 'Click or press SPACE to restart';
+        startBlast(planeGroup.position.clone(), velocity.clone());
+
+        // The overlay used to appear on the same frame as the crash, which
+        // covered the whole thing. Hold it until the fireball has had its
+        // moment; pressing space before then still restarts immediately.
+        const hitSpeed = Math.floor(airspeed);
+        clearTimeout(crashCardTimer);
+        crashCardTimer = setTimeout(function () {
+          if (!crashed) return;                 // already restarted
+          const overlay = document.getElementById('overlay');
+          overlay.classList.remove('hidden');
+          overlay.classList.add('instant');
+          document.getElementById('step-controls').classList.add('hidden');
+          const step = document.getElementById('step-title');
+          step.classList.remove('hidden');
+          step.querySelector('.kicker').style.display = 'none';
+          step.querySelector('h1').textContent = 'CRASHED';
+          step.querySelector('.sub').textContent = 'Speed: ' + hitSpeed + ' kts';
+          step.querySelector('.prompt').textContent = 'Click or press SPACE to restart';
+        }, 2100);
         return;
       }
       planeGroup.position.y = terrainH + 2;
@@ -1238,6 +1252,267 @@ canvas { display: block; }
       stickPivot.rotation.x = pitchInput * -0.22;
       stickPivot.rotation.z = rollInput * -0.26;
       throttlePivot.rotation.x = 0.55 - throttle * 1.05;
+    }
+  }
+
+  // ===== CRASH =====
+  // A soft round sprite, drawn once and shared by every flame and every puff
+  // of smoke. Sprites always face the camera, so a handful of them reads as
+  // something volumetric from any angle, which stacked spheres never do.
+  const puffTex = (function () {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d').createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0.00, 'rgba(255,255,255,1)');
+    g.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+    g.addColorStop(0.75, 'rgba(255,255,255,0.12)');
+    g.addColorStop(1.00, 'rgba(255,255,255,0)');
+    const ctx2 = c.getContext('2d');
+    ctx2.fillStyle = g;
+    ctx2.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  })();
+
+  const blastGroup = new THREE.Group();
+  scene.add(blastGroup);
+
+  const FIRE_N = 14, SMOKE_N = 20, SPARK_N = 90, DEBRIS_N = 10;
+  const fire = [], smoke = [], debris = [];
+  let blastTime = -1;                       // < 0 means nothing is burning
+
+  function makePuff(additive) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: puffTex,
+      transparent: true,
+      depthWrite: false,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending
+    }));
+    m.visible = false;
+    blastGroup.add(m);
+    return { s: m, born: 0, life: 1, r0: 1, r1: 2, vel: new THREE.Vector3() };
+  }
+  for (let i = 0; i < FIRE_N; i++) fire.push(makePuff(true));
+  for (let i = 0; i < SMOKE_N; i++) smoke.push(makePuff(false));
+
+  // Sparks are one Points object rather than 90 meshes: one draw call, and the
+  // positions are just a buffer to write into each frame.
+  const sparkPos = new Float32Array(SPARK_N * 3);
+  const sparkVel = [];
+  for (let i = 0; i < SPARK_N; i++) sparkVel.push(new THREE.Vector3());
+  const sparkGeo = new THREE.BufferGeometry();
+  sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+  const sparkMat = new THREE.PointsMaterial({
+    color: 0xffb347, size: 1.1, sizeAttenuation: true,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  const sparks = new THREE.Points(sparkGeo, sparkMat);
+  sparks.frustumCulled = false;             // the bounding box never updates
+  sparks.visible = false;
+  blastGroup.add(sparks);
+
+  // Tumbling pieces of the airframe.
+  const debrisGeo = new THREE.BoxGeometry(0.9, 0.25, 0.6);
+  const debrisMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.7, metalness: 0.3 });
+  for (let i = 0; i < DEBRIS_N; i++) {
+    const m = new THREE.Mesh(debrisGeo, debrisMat);
+    m.castShadow = true;
+    m.visible = false;
+    blastGroup.add(m);
+    debris.push({ m: m, vel: new THREE.Vector3(), spin: new THREE.Vector3(), rest: false });
+  }
+
+  // The pressure wave, flat on the ground and gone in half a second.
+  const shockMat = new THREE.MeshBasicMaterial({
+    color: 0xffd9a0, transparent: true, opacity: 0,
+    side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  const shock = new THREE.Mesh(new THREE.RingGeometry(0.75, 1, 48), shockMat);
+  shock.rotation.x = -Math.PI / 2;
+  shock.visible = false;
+  blastGroup.add(shock);
+
+  // Burnt ground, which stays for the rest of the flight.
+  const scorchMat = new THREE.MeshBasicMaterial({
+    color: 0x120d08, transparent: true, opacity: 0.85, depthWrite: false
+  });
+  const scorch = new THREE.Mesh(new THREE.CircleGeometry(11, 32), scorchMat);
+  scorch.rotation.x = -Math.PI / 2;
+  scorch.visible = false;
+  blastGroup.add(scorch);
+
+  // One light does more for the look of an explosion than any amount of
+  // geometry: for a moment the hillside is lit from the fireball, not the sun.
+  const blastLight = new THREE.PointLight(0xff7a1a, 0, 900, 2);
+  blastGroup.add(blastLight);
+
+  const shakeBase = new THREE.Vector3();
+  let shakeAmt = 0;
+
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+
+  function startBlast(at, vel) {
+    blastTime = 0;
+    blastGroup.position.set(0, 0, 0);
+    const ground = heightAt(at.x, at.z);
+
+    blastLight.position.copy(at);
+    blastLight.intensity = 0;
+
+    shock.position.set(at.x, ground + 0.6, at.z);
+    shock.scale.setScalar(1);
+    shock.visible = true;
+    shockMat.opacity = 0;
+
+    scorch.position.set(at.x, ground + 0.35, at.z);
+    scorch.visible = true;
+
+    // Fire: a fast core, then slower flames rolling upward behind it.
+    fire.forEach(function (p, i) {
+      const t = i / FIRE_N;
+      p.born = t * 0.30;
+      p.life = rnd(0.55, 1.15);
+      p.r0 = rnd(1.5, 4.5);
+      p.r1 = p.r0 * rnd(3.0, 5.5);
+      p.s.position.set(at.x + rnd(-3, 3), at.y + rnd(-1.5, 2.5), at.z + rnd(-3, 3));
+      p.vel.set(rnd(-9, 9), rnd(4, 17), rnd(-9, 9)).addScaledVector(vel, 0.12);
+      p.s.material.color.setHSL(rnd(0.02, 0.11), 1, rnd(0.5, 0.62));
+      p.s.visible = false;
+    });
+
+    // Smoke lags the fire and outlives it by a long way.
+    smoke.forEach(function (p, i) {
+      const t = i / SMOKE_N;
+      p.born = 0.12 + t * 1.5;
+      p.life = rnd(3.5, 7.0);
+      p.r0 = rnd(3, 7);
+      p.r1 = p.r0 * rnd(3.5, 6.0);
+      p.s.position.set(at.x + rnd(-4, 4), at.y + rnd(-1, 3), at.z + rnd(-4, 4));
+      p.vel.set(rnd(-3, 3), rnd(3, 9), rnd(-3, 3));
+      const g = rnd(0.05, 0.22);
+      p.s.material.color.setRGB(g, g * 0.94, g * 0.9);
+      p.s.visible = false;
+    });
+
+    for (let i = 0; i < SPARK_N; i++) {
+      sparkPos[i * 3] = at.x; sparkPos[i * 3 + 1] = at.y; sparkPos[i * 3 + 2] = at.z;
+      const dir = new THREE.Vector3(rnd(-1, 1), rnd(-0.1, 1), rnd(-1, 1)).normalize();
+      sparkVel[i].copy(dir).multiplyScalar(rnd(18, 62)).addScaledVector(vel, 0.25);
+    }
+    sparkGeo.attributes.position.needsUpdate = true;
+    sparkMat.opacity = 1;
+    sparks.visible = true;
+
+    debris.forEach(function (d) {
+      d.m.position.copy(at);
+      d.m.visible = true;
+      d.rest = false;
+      d.vel.set(rnd(-1, 1), rnd(0.2, 1), rnd(-1, 1)).normalize()
+        .multiplyScalar(rnd(14, 40)).addScaledVector(vel, 0.3);
+      d.spin.set(rnd(-9, 9), rnd(-9, 9), rnd(-9, 9));
+    });
+
+    shakeBase.copy(camera.position);
+    shakeAmt = 1;
+    planeGroup.visible = false;
+  }
+
+  function clearBlast() {
+    blastTime = -1;
+    shakeAmt = 0;
+    fire.forEach(function (p) { p.s.visible = false; });
+    smoke.forEach(function (p) { p.s.visible = false; });
+    debris.forEach(function (d) { d.m.visible = false; });
+    sparks.visible = false;
+    shock.visible = false;
+    scorch.visible = false;
+    blastLight.intensity = 0;
+    planeGroup.visible = true;
+  }
+
+  function updateBlast(dt) {
+    if (blastTime < 0) return;
+    blastTime += dt;
+    const t = blastTime;
+
+    // Flash: near-instant, then gone. The slow tail is the fire still burning.
+    blastLight.intensity = t < 0.09 ? (t / 0.09) * 260
+      : 260 * Math.exp(-(t - 0.09) * 7) + 26 * Math.exp(-(t - 0.09) * 0.5);
+
+    if (t < 0.65) {
+      const k = t / 0.65;
+      shock.scale.setScalar(1 + k * 62);
+      shockMat.opacity = (1 - k) * 0.7;
+    } else if (shock.visible) {
+      shock.visible = false;
+    }
+
+    fire.forEach(function (p) {
+      const age = t - p.born;
+      if (age < 0 || age > p.life) { p.s.visible = false; return; }
+      const k = age / p.life;
+      p.s.visible = true;
+      p.s.position.addScaledVector(p.vel, dt);
+      p.vel.multiplyScalar(1 - 2.2 * dt);       // air resistance
+      p.vel.y += 11 * dt;                        // hot gas rises
+      const r = p.r0 + (p.r1 - p.r0) * k;
+      p.s.scale.setScalar(r);
+      // Bright while young, then darkening to a dull red as it burns out.
+      p.s.material.opacity = k < 0.15 ? k / 0.15 : Math.pow(1 - (k - 0.15) / 0.85, 1.6);
+    });
+
+    smoke.forEach(function (p) {
+      const age = t - p.born;
+      if (age < 0 || age > p.life) { p.s.visible = false; return; }
+      const k = age / p.life;
+      p.s.visible = true;
+      p.s.position.addScaledVector(p.vel, dt);
+      p.vel.multiplyScalar(1 - 0.7 * dt);
+      p.vel.y += 2.6 * dt;
+      p.vel.x += 1.1 * dt;                       // a light drift, so the column leans
+      p.s.scale.setScalar(p.r0 + (p.r1 - p.r0) * k);
+      p.s.material.opacity = (k < 0.1 ? k / 0.1 : (1 - (k - 0.1) / 0.9)) * 0.55;
+    });
+
+    if (sparks.visible) {
+      for (let i = 0; i < SPARK_N; i++) {
+        const v = sparkVel[i];
+        v.y -= 42 * dt;
+        v.multiplyScalar(1 - 1.4 * dt);
+        const j = i * 3;
+        sparkPos[j] += v.x * dt;
+        sparkPos[j + 1] += v.y * dt;
+        sparkPos[j + 2] += v.z * dt;
+        const g = heightAt(sparkPos[j], sparkPos[j + 2]);
+        if (sparkPos[j + 1] < g) { sparkPos[j + 1] = g; v.set(0, 0, 0); }
+      }
+      sparkGeo.attributes.position.needsUpdate = true;
+      sparkMat.opacity = Math.max(0, 1 - t / 1.6);
+      if (t > 1.6) sparks.visible = false;
+    }
+
+    debris.forEach(function (d) {
+      if (!d.m.visible || d.rest) return;
+      d.vel.y -= 30 * dt;
+      d.m.position.addScaledVector(d.vel, dt);
+      d.m.rotation.x += d.spin.x * dt;
+      d.m.rotation.y += d.spin.y * dt;
+      d.m.rotation.z += d.spin.z * dt;
+      const g = heightAt(d.m.position.x, d.m.position.z);
+      if (d.m.position.y < g + 0.2) {
+        d.m.position.y = g + 0.2;
+        if (Math.abs(d.vel.y) < 4) { d.rest = true; d.spin.set(0, 0, 0); }
+        else { d.vel.y = -d.vel.y * 0.34; d.vel.x *= 0.6; d.vel.z *= 0.6; d.spin.multiplyScalar(0.6); }
+      }
+    });
+
+    if (shakeAmt > 0) {
+      shakeAmt = Math.max(0, shakeAmt - dt * 0.85);
+      const a = shakeAmt * shakeAmt * 2.6;
+      camera.position.set(
+        shakeBase.x + rnd(-a, a),
+        shakeBase.y + rnd(-a, a),
+        shakeBase.z + rnd(-a, a)
+      );
     }
   }
 
@@ -1390,7 +1665,7 @@ canvas { display: block; }
   const DAY_HEMI_GND = new THREE.Color(0x445522), NIGHT_HEMI_GND = new THREE.Color(0x11180c);
   const DAY_FILL = new THREE.Color(0x8ab4d8), NIGHT_FILL = new THREE.Color(0x2a3a58);
   const DAY_WATER = new THREE.Color(0x1a7099), NIGHT_WATER = new THREE.Color(0x0a2033);
-  let timeIndex = 1;
+  let timeIndex = 0;          // DAWN
 
   function applyTime(i, announce) {
     timeIndex = ((i % TIMES.length) + TIMES.length) % TIMES.length;
@@ -1524,24 +1799,57 @@ canvas { display: block; }
       toneGain.gain.setTargetAtTime(stall && Math.sin(t * 7) > 0.2 ? 0.016 : 0, now, 0.03);
     }
 
+    // Three layers, because one noise burst reads as a bump rather than a
+    // detonation: the crack of the impact, the body of the blast, and a long
+    // rumble rolling away over the hills.
     function crash() {
       if (!ready) return;
       const now = ctx.currentTime;
-      const n = Math.floor(ctx.sampleRate * 1.1);
-      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.5);
-      const src = ctx.createBufferSource(); src.buffer = buf;
-      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;
-      const g = ctx.createGain(); g.gain.value = 0.5;
-      src.connect(f); f.connect(g); g.connect(master); src.start();
-      const thud = ctx.createOscillator(); thud.type = 'sine';
-      thud.frequency.setValueAtTime(120, now);
-      thud.frequency.exponentialRampToValueAtTime(26, now + 0.7);
+
+      function noise(seconds, decay) {
+        const n = Math.floor(ctx.sampleRate * seconds);
+        const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        return src;
+      }
+
+      // 1. The crack. Bright, and over before you can place it.
+      const crack = noise(0.30, 5.5);
+      const cf = ctx.createBiquadFilter(); cf.type = 'highpass'; cf.frequency.value = 900;
+      const cg = ctx.createGain(); cg.gain.value = 0.55;
+      crack.connect(cf); cf.connect(cg); cg.connect(master); crack.start(now);
+
+      // 2. The body, with the filter closing as the fireball loses its edge.
+      const body = noise(2.2, 1.7);
+      const bf = ctx.createBiquadFilter(); bf.type = 'lowpass';
+      bf.frequency.setValueAtTime(2600, now);
+      bf.frequency.exponentialRampToValueAtTime(180, now + 1.5);
+      const bg = ctx.createGain();
+      bg.gain.setValueAtTime(0.9, now);
+      bg.gain.exponentialRampToValueAtTime(0.001, now + 2.1);
+      body.connect(bf); bf.connect(bg); bg.connect(master); body.start(now);
+
+      // 3. The rumble: what you actually feel, an octave below the rest.
+      const sub = ctx.createOscillator(); sub.type = 'sine';
+      sub.frequency.setValueAtTime(105, now);
+      sub.frequency.exponentialRampToValueAtTime(18, now + 1.4);
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.0001, now);
+      sg.gain.exponentialRampToValueAtTime(0.95, now + 0.03);
+      sg.gain.exponentialRampToValueAtTime(0.001, now + 2.4);
+      sub.connect(sg); sg.connect(master); sub.start(now); sub.stop(now + 2.5);
+
+      // 4. The tail, arriving late as though it had come back off the terrain.
+      const tail = noise(2.6, 0.8);
+      const tf = ctx.createBiquadFilter(); tf.type = 'lowpass'; tf.frequency.value = 260;
       const tg = ctx.createGain();
-      tg.gain.setValueAtTime(0.5, now);
-      tg.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
-      thud.connect(tg); tg.connect(master); thud.start(); thud.stop(now + 1);
+      tg.gain.setValueAtTime(0.0001, now);
+      tg.gain.linearRampToValueAtTime(0.30, now + 0.22);
+      tg.gain.exponentialRampToValueAtTime(0.001, now + 2.6);
+      tail.connect(tf); tf.connect(tg); tg.connect(master); tail.start(now);
     }
 
     function toggle() {
@@ -1576,8 +1884,12 @@ canvas { display: block; }
   }
 
   // ===== INPUT =====
+  let crashCardTimer = 0;
+
   function startFlight() {
     if (playing) return;
+    clearTimeout(crashCardTimer);
+    clearBlast();
     playing = true; crashed = false;
     throttle = 0.6; airspeed = START_SPEED;
     planeGroup.position.set(0, START_ALT, 0);
@@ -1619,10 +1931,12 @@ canvas { display: block; }
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Starting state. ?time=night (or dawn / midday / dusk) opens straight into it.
+  // Starting state. Dawn by default: the low sun rakes across the hills and
+  // throws long shadows, which flatters the terrain far more than noon does.
+  // ?time=night (or midday / dusk) opens straight into one of the others.
   const wanted = (params.get('time') || '').toUpperCase();
   const wantedIndex = TIMES.findIndex(t => t.name === wanted);
-  applyTime(wantedIndex >= 0 ? wantedIndex : 1, false);
+  applyTime(wantedIndex >= 0 ? wantedIndex : 0, false);
   setView(0, false);
   Sound.label();
   document.getElementById('seed-line').textContent =
