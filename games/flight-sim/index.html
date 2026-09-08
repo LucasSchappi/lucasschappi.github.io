@@ -81,6 +81,54 @@
     </div>
   </section>
 
+  <!-- Today's challenge. Rendered by assets/js/site.js, which works out the
+       day the same way the game and the server do. Everyone flies the same
+       map, so the scores can be compared. -->
+  <section class="section section--alt" data-challenge>
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Today&rsquo;s challenge</h2>
+      </div>
+      <p class="chal-name" data-chal-name></p>
+      <p class="chal-blurb" data-chal-blurb></p>
+      <div class="btn-row">
+        <a class="btn" data-chal-play href="/games/flight-sim/play/">Play the challenge</a>
+        <a class="btn btn--ghost" href="#challenge-board">See the board</a>
+      </div>
+      <p class="chal-note" data-chal-note></p>
+      <ul class="chal-week" data-chal-week></ul>
+    </div>
+  </section>
+
+  <!-- Today and all time on the current challenge. -->
+  <section class="section" id="challenge-board" data-board="" data-board-daily hidden>
+    <div class="wrap">
+      <div class="section-head">
+        <h2 data-chal-board-head>Challenge board</h2>
+      </div>
+      <div class="board-pair">
+        <div>
+          <h3 class="board-sub">Today</h3>
+          <ol class="board" data-board-today></ol>
+        </div>
+        <div>
+          <h3 class="board-sub">All time</h3>
+          <ol class="board" data-board-list></ol>
+        </div>
+      </div>
+      <p class="board-status" data-board-status role="status"></p>
+      <div class="board-name" data-board-name hidden>
+        <label for="board-pilot">Your name on the board</label>
+        <div class="board-name__row">
+          <input id="board-pilot" maxlength="16" autocomplete="off" spellcheck="false" placeholder="your name">
+          <button class="btn btn--sm" type="button" data-board-save>Save</button>
+        </div>
+        <p class="board-name__note">Your scores are tied to this browser, not to
+          an account. Changing your name renames the entry you already have.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- Lowest crash. Hidden until assets/js/site.js has actually reached the
        board, so a backend that is down shows nothing rather than an empty
        table. See docs/poll-setup.md. -->
@@ -95,15 +143,6 @@
         deepest point is about &minus;179 ft.</p>
       <ol class="board" data-board-list></ol>
       <p class="board-status" data-board-status role="status"></p>
-      <div class="board-name" data-board-name hidden>
-        <label for="board-pilot">Your name on the board</label>
-        <div class="board-name__row">
-          <input id="board-pilot" maxlength="16" autocomplete="off" spellcheck="false" placeholder="your name">
-          <button class="btn btn--sm" type="button" data-board-save>Save</button>
-        </div>
-        <p class="board-name__note">Your scores are tied to this browser, not to
-          an account. Changing your name renames the entry you already have.</p>
-      </div>
     </div>
   </section>
 

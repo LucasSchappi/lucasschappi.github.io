@@ -68,6 +68,17 @@ canvas { display: block; }
 .board__list li::before { content: counter(r) "."; opacity: 0.5; width: 22px; }
 .board__list li span:first-of-type { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board__list li.mine { color: #9f6; font-weight: bold; }
+.board__list li.empty { opacity: 0.45; }
+#board-today-wrap.hidden { display: none; }
+#board-today-wrap + .board__head { margin-top: 10px; }
+#challenge-banner {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  font-family: 'Courier New', monospace; color: #0f0; font-size: 13px;
+  letter-spacing: 2px; text-align: center; text-shadow: 0 0 6px rgba(0,0,0,0.9);
+  pointer-events: none; z-index: 11;
+}
+#challenge-banner .cb-sub { font-size: 11px; opacity: 0.7; letter-spacing: 1px; }
+#challenge-banner.hidden { display: none; }
 .board__me { opacity: 0.7; margin-bottom: 10px; min-height: 16px; }
 .board__name { display: flex; align-items: center; gap: 6px; }
 .board__name label { opacity: 0.6; letter-spacing: 1px; }
@@ -194,6 +205,10 @@ canvas { display: block; }
   </div>
   <div id="toast"></div>
 </div>
+<div id="challenge-banner" class="hidden">
+  <div id="cb-name"></div>
+  <div class="cb-sub" id="cb-live"></div>
+</div>
 <div id="overlay">
   <div class="step" id="step-title">
     <div class="top">
@@ -203,7 +218,11 @@ canvas { display: block; }
     </div>
     <div class="bottom">
       <div id="board" class="board hidden">
-        <div class="board__head">LOWEST CRASH</div>
+        <div id="board-today-wrap" class="hidden">
+          <div class="board__head">TODAY</div>
+          <ol class="board__list" id="board-today"></ol>
+        </div>
+        <div class="board__head" id="board-alltime-head">LOWEST CRASH</div>
         <ol class="board__list" id="board-list"></ol>
         <div class="board__me" id="board-me"></div>
         <div class="board__name">
@@ -259,6 +278,8 @@ canvas { display: block; }
   let keys = {};
   let elapsed = 0;
   let stalling = false;
+  let glideCeiling = Infinity;        // dead stick: the height you may not exceed
+  let runStart = 0;                   // when this attempt began, for timed runs
 
   // ===== WORLD SEED =====
   // The landscape is a fixed sum of sine waves, so with no seed every flight
@@ -273,8 +294,39 @@ canvas { display: block; }
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
   }
+  // Daily challenges. Free play stays exactly as it was; ?challenge= turns one
+  // of these on. `board` is where a score goes, `lower` says which way round
+  // the table sorts, and `unit` is only for showing it.
+  const CHALLENGES = {
+    low:   { name: 'LOWEST DEATH',  board: 'chal-low',   lower: true,  unit: 'ft',
+             blurb: 'Die as far below sea level as you can.' },
+    high:  { name: 'HIGHEST DEATH', board: 'chal-high',  lower: false, unit: 'ft',
+             blurb: 'Hit the highest ground you can find.' },
+    glide: { name: 'DEAD STICK',    board: 'chal-glide', lower: false, unit: 's',
+             blurb: 'No engine, and you cannot climb. Stay up as long as you can.' }
+  };
+  const chalId = params.get('challenge');
+  const CHALLENGE = Object.prototype.hasOwnProperty.call(CHALLENGES, chalId)
+    ? CHALLENGES[chalId] : null;
+
+  // The day is taken in UTC so that everyone, wherever they are, is flying the
+  // same challenge on the same map and the scores mean something.
+  const CHAL_DAY = new Date().toISOString().slice(0, 10);
+
+  function dayHash(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
   const seedParam = parseInt(params.get('seed'), 10);
-  const SEED = Number.isFinite(seedParam) ? (seedParam >>> 0) : (Math.random() * 4294967296) >>> 0;
+  // A challenge map comes from the date, not the address bar: picking your own
+  // seed would mean picking your own terrain, and the board would be a fiction.
+  const SEED = CHALLENGE ? dayHash(chalId + ':' + CHAL_DAY)
+    : (Number.isFinite(seedParam) ? (seedParam >>> 0) : (Math.random() * 4294967296) >>> 0);
   const rand = mulberry32(SEED);
   const OFFSET_X = (rand() - 0.5) * 400000;
   const OFFSET_Z = (rand() - 0.5) * 400000;
@@ -1147,6 +1199,7 @@ canvas { display: block; }
     document.getElementById('flaps-indicator').style.display = flaps ? 'block' : 'none';
 
     Sound.update(throttle, airspeed, playing && !crashed, stalling, elapsed);
+    if (!playing) updateChallengeHud();
 
     // Runs before the early return below, so the wreck keeps burning while
     // the flight itself is over.
@@ -1171,8 +1224,12 @@ canvas { display: block; }
     if (!playing || crashed) return;
 
     // Throttle
-    if (keys['ShiftLeft'] || keys['ShiftRight']) throttle = Math.min(1, throttle + dt * 0.5);
-    if (keys['ControlLeft'] || keys['ControlRight']) throttle = Math.max(0, throttle - dt * 0.5);
+    if (CHALLENGE === CHALLENGES.glide) {
+      throttle = 0;                       // the engine is out and stays out
+    } else {
+      if (keys['ShiftLeft'] || keys['ShiftRight']) throttle = Math.min(1, throttle + dt * 0.5);
+      if (keys['ControlLeft'] || keys['ControlRight']) throttle = Math.max(0, throttle - dt * 0.5);
+    }
 
     const thrustForce = throttle * 120;
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(planeGroup.quaternion);
@@ -1222,6 +1279,17 @@ canvas { display: block; }
 
     planeGroup.position.add(velocity.clone().multiplyScalar(dt));
 
+    // Dead stick: altitude may only ever go down. Pulling back still trades
+    // speed for time, it just cannot buy height back.
+    if (CHALLENGE === CHALLENGES.glide) {
+      if (planeGroup.position.y > glideCeiling) {
+        planeGroup.position.y = glideCeiling;
+        if (velocity.y > 0) velocity.y = 0;      // or it would build up unspent
+      } else {
+        glideCeiling = planeGroup.position.y;
+      }
+    }
+
     // Ground collision
     const terrainH = heightAt(planeGroup.position.x, planeGroup.position.z);
     if (planeGroup.position.y < terrainH + 2) {
@@ -1242,7 +1310,10 @@ canvas { display: block; }
         // machine overshoots further still, so using the raw position would
         // hand better scores to worse computers.
         const hitFeet = Math.round((terrainH + 2) * 3.28);
-        submitCrash(hitFeet);
+        const aloft = Math.round(elapsed - runStart);
+        // Dead stick is scored on time in the air; the others on where you hit.
+        const score = CHALLENGE === CHALLENGES.glide ? aloft : hitFeet;
+        submitCrash(score);
 
         clearTimeout(crashCardTimer);
         crashCardTimer = setTimeout(function () {
@@ -1255,8 +1326,9 @@ canvas { display: block; }
           step.classList.remove('hidden');
           step.querySelector('.kicker').style.display = 'none';
           step.querySelector('h1').textContent = 'CRASHED';
-          step.querySelector('.sub').textContent =
-            hitFeet + ' ft  ' + String.fromCharCode(183) + '  ' + hitSpeed + ' kts';
+          step.querySelector('.sub').textContent = CHALLENGE === CHALLENGES.glide
+            ? aloft + ' seconds aloft  ' + String.fromCharCode(183) + '  ' + hitFeet + ' ft'
+            : hitFeet + ' ft  ' + String.fromCharCode(183) + '  ' + hitSpeed + ' kts';
           step.querySelector('.prompt').textContent = 'Click or press SPACE to restart';
         }, 2100);
         return;
@@ -1304,6 +1376,7 @@ canvas { display: block; }
     const vspeed = Math.floor(velocity.y * 60 * 3.28);
     document.getElementById('v-speed').textContent = Math.floor(airspeed);
     document.getElementById('v-alt').textContent = Math.floor(planeGroup.position.y * 3.28);
+    updateChallengeHud();
     document.getElementById('v-heading').textContent = Math.floor(heading);
     document.getElementById('v-pitch').textContent = pitch.toFixed(1);
     document.getElementById('v-bank').textContent = bank.toFixed(1);
@@ -1590,7 +1663,7 @@ canvas { display: block; }
   // post as you, and clearing site data loses it. For a score table on a
   // hobby site that is the right trade for never asking anyone to sign up.
   const BOARD_URL = 'https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec';
-  const BOARD = 'low-crash';
+  const BOARD = CHALLENGE ? CHALLENGE.board : 'low-crash';
 
   function pilotCode() {
     let c = null;
@@ -1628,26 +1701,76 @@ canvas { display: block; }
   }
 
   const boardEl = () => document.getElementById('board');
+
+  if (CHALLENGE) {
+    const b = document.getElementById('challenge-banner');
+    document.getElementById('cb-name').textContent = 'CHALLENGE: ' + CHALLENGE.name;
+    b.classList.remove('hidden');
+  }
+
+  // The number being competed on, shown while flying so it is not a surprise
+  // at the end.
+  function updateChallengeHud() {
+    if (!CHALLENGE) return;
+    const live = document.getElementById('cb-live');
+    if (!playing) { live.textContent = CHALLENGE.blurb; return; }
+    live.textContent = CHALLENGE === CHALLENGES.glide
+      ? Math.floor(elapsed - runStart) + ' s aloft'
+      : Math.floor(planeGroup.position.y * 3.28) + ' ft';
+  }
   let lastScore = null;
 
-  function drawBoard(data) {
-    if (!data || !data.top) return;
-    const list = document.getElementById('board-list');
-    list.innerHTML = '';
-    data.top.forEach(row => {
+  const UNIT = () => (CHALLENGE ? CHALLENGE.unit : 'ft');
+
+  function fillList(el, rows) {
+    el.innerHTML = '';
+    (rows || []).slice(0, 5).forEach(row => {
       const li = document.createElement('li');
       if (row.mine) li.className = 'mine';
       const n = document.createElement('span');
       n.textContent = row.name;            // text, never markup
       const v = document.createElement('span');
-      v.textContent = row.value + ' ft';
+      v.textContent = row.value + ' ' + UNIT();
+      li.appendChild(n); li.appendChild(v);
+      el.appendChild(li);
+    });
+    if (!el.children.length) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'nobody yet';
+      el.appendChild(li);
+    }
+  }
+
+  function drawBoard(data) {
+    if (!data || !data.top) return;
+    if (data.today !== undefined) {
+      document.getElementById('board-today-wrap').classList.remove('hidden');
+      fillList(document.getElementById('board-today'), data.today);
+      document.getElementById('board-alltime-head').textContent = 'ALL TIME';
+    }
+    const list = document.getElementById('board-list');
+    list.innerHTML = '';
+    data.top.slice(0, 5).forEach(row => {
+      const li = document.createElement('li');
+      if (row.mine) li.className = 'mine';
+      const n = document.createElement('span');
+      n.textContent = row.name;            // text, never markup
+      const v = document.createElement('span');
+      v.textContent = row.value + ' ' + UNIT();
       li.appendChild(n); li.appendChild(v);
       list.appendChild(li);
     });
     const me = document.getElementById('board-me');
-    me.textContent = data.rank
-      ? 'You are ' + data.rank + ' of ' + data.entries
-      : (data.entries ? data.entries + ' pilots so far' : '');
+    if (data.today !== undefined) {
+      me.textContent = data.todayRank
+        ? 'Today: ' + data.todayRank + ' of ' + data.todayEntries
+        : (data.todayEntries ? data.todayEntries + ' today' : 'first today');
+    } else {
+      me.textContent = data.rank
+        ? 'You are ' + data.rank + ' of ' + data.entries
+        : (data.entries ? data.entries + ' pilots so far' : '');
+    }
     boardEl().classList.remove('hidden');
   }
 
@@ -2101,6 +2224,8 @@ canvas { display: block; }
     // flight began sliding backwards until the thrust dragged it round.
     planeGroup.quaternion.identity();
     velocity.set(0, 0, -START_SPEED);
+    glideCeiling = START_ALT;
+    runStart = elapsed;
     camera.position.set(0, START_ALT + 6, 24);
     smoothCamPos.set(0, START_ALT + 6, 24);
     smoothLookTarget.set(0, START_ALT, -25);
@@ -2133,6 +2258,12 @@ canvas { display: block; }
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
+
+  if (CHALLENGE) {
+    document.querySelector('#step-title .kicker').textContent = 'Challenge';
+    document.querySelector('#step-title h1').textContent = CHALLENGE.name;
+    document.querySelector('#step-title .sub').textContent = CHALLENGE.blurb;
+  }
 
   // The title screen is always dawn: the low sun rakes across the hills and
   // throws long shadows, which flatters the terrain far more than noon does.

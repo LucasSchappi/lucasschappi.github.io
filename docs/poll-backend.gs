@@ -21,6 +21,7 @@ var GAMES = [
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (p.board) return json(topOf(p.board));
+  if (p.today) return json({ day: today(), challenge: challengeOfDay(today()) });
   var week = isoWeek(new Date());
   var state = read(week);
   return json({ week: week, stamp: state.stamp, votes: state.votes });
@@ -133,12 +134,18 @@ function resetThisWeek() {
  */
 
 var BOARDS = {
-  // Lowest altitude you died at, in feet. Lower wins. The floor is the
-  // deepest trench in the world, about -179 ft, so anything past the bound
+  // Free play: lowest altitude you died at, in feet. Lower wins. The floor is
+  // the deepest trench in the world, about -179 ft, so anything past the bound
   // below did not come from playing the game.
-  'low-crash': { lower: true, min: -220, max: 200000 }
+  'low-crash':  { lower: true,  min: -220, max: 200000 },
+
+  // Daily challenges. Each keeps an all-time board and a board for today.
+  'chal-low':   { lower: true,  min: -220, max: 200000 },   // lowest death, ft
+  'chal-high':  { lower: false, min: -220, max: 200000 },   // highest death, ft
+  'chal-glide': { lower: false, min: 0,    max: 36000 }     // seconds aloft
 };
 var BOARD_KEEP = 50;      // a script property holds 9 kB; 50 entries is well under
+var DAY_BOARDS_KEPT = 8;  // yesterday is worth a look; last month is clutter
 
 function submitScore(body) {
   var spec = BOARDS[body.board];
@@ -163,16 +170,13 @@ function submitScore(body) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var all = readBoard(body.board);
-    var mine = all[code];
-    if (!mine) {
-      if (!hasValue) return json(topOf(body.board, code));   // nothing to file
-      all[code] = { n: name, v: value };
-    } else {
-      mine.n = name;                                     // a rename always sticks
-      if (hasValue && (spec.lower ? value < mine.v : value > mine.v)) mine.v = value;
+    // A score counts twice: once against everyone who has ever flown this
+    // course, and once against everyone who has flown it today.
+    fileOn(body.board, null, code, name, hasValue, value, spec);
+    if (isChallenge(body.board)) {
+      fileOn(body.board, today(), code, name, hasValue, value, spec);
+      pruneDayBoards();
     }
-    writeBoard(body.board, all);
     return json(topOf(body.board, code));
   } finally {
     lock.releaseLock();
@@ -192,8 +196,8 @@ function cleanName(raw) {
   return n || 'Unknown';
 }
 
-function readBoard(board) {
-  var raw = PropertiesService.getScriptProperties().getProperty('board-' + board);
+function readBoard(board, day) {
+  var raw = PropertiesService.getScriptProperties().getProperty(keyFor(board, day));
   if (!raw) return {};
   try {
     return JSON.parse(raw) || {};
@@ -202,7 +206,7 @@ function readBoard(board) {
   }
 }
 
-function writeBoard(board, all) {
+function writeBoard(board, all, day) {
   var spec = BOARDS[board];
   var codes = Object.keys(all);
 
@@ -217,24 +221,92 @@ function writeBoard(board, all) {
     all = trimmed;
   }
   PropertiesService.getScriptProperties()
-    .setProperty('board-' + board, JSON.stringify(all));
+    .setProperty(keyFor(board, day), JSON.stringify(all));
+}
+
+function isChallenge(board) { return board.indexOf('chal-') === 0; }
+
+/* A day's table lives under the same name with the date appended, so today's
+ * board and the all-time board are the same code on two different keys. */
+function keyFor(board, day) { return 'board-' + board + (day ? '@' + day : ''); }
+
+function today() {
+  return Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd');
+}
+
+function fileOn(board, day, code, name, hasValue, value, spec) {
+  var all = readBoard(board, day);
+  var mine = all[code];
+  if (!mine) {
+    if (!hasValue) return;                    // nothing worth filing yet
+    all[code] = { n: name, v: value };
+  } else {
+    mine.n = name;                            // a rename always sticks
+    if (hasValue && (spec.lower ? value < mine.v : value > mine.v)) mine.v = value;
+  }
+  writeBoard(board, all, day);
+}
+
+/* Yesterday's table is never read again, and script properties are finite. */
+function pruneDayBoards() {
+  var props = PropertiesService.getScriptProperties();
+  var keep = {}, d = new Date();
+  for (var i = 0; i < DAY_BOARDS_KEPT; i++) {
+    keep[Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd')] = true;
+    d = new Date(d.getTime() - 86400000);
+  }
+  var all = props.getProperties();
+  Object.keys(all).forEach(function (k) {
+    var at = k.indexOf('@');
+    if (k.indexOf('board-') === 0 && at > 0 && !keep[k.slice(at + 1)]) {
+      props.deleteProperty(k);
+    }
+  });
+}
+
+/* Which challenge today is. Saturday borrows one of the others, picked from
+ * the date so everybody gets the same one. */
+var CHALLENGE_BY_DAY = ['glide', 'target', 'low', 'high', 'land', 'course'];
+
+function challengeOfDay(day) {
+  var p = day.split('-');
+  var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+  var dow = d.getUTCDay();                    // 0 Sunday .. 6 Saturday
+  if (dow < 6) return CHALLENGE_BY_DAY[dow];
+  var n = Math.floor(d.getTime() / 86400000);
+  return CHALLENGE_BY_DAY[((n % 6) + 6) % 6];
 }
 
 /* The public view: names and scores, never codes. `you` is the caller's own
- * code, used only to mark their row and report their rank. */
+ * code, used only to mark their row and report their rank. A challenge board
+ * comes back with today's table alongside the all-time one. */
 function topOf(board, you) {
   var spec = BOARDS[board];
   if (!spec) return { error: 'unknown board' };
-  var all = readBoard(board);
+  var out = rankOn(board, null, you, spec);
+  out.board = board;
+  if (isChallenge(board)) {
+    var d = rankOn(board, today(), you, spec);
+    out.today = d.top;
+    out.todayRank = d.rank;
+    out.todayEntries = d.entries;
+    out.day = today();
+    out.challenge = challengeOfDay(today());
+  }
+  return out;
+}
+
+function rankOn(board, day, you, spec) {
+  var all = readBoard(board, day);
   var rows = Object.keys(all).map(function (c) {
     return { name: all[c].n, value: all[c].v, mine: c === you };
   });
   rows.sort(function (a, b) {
     return spec.lower ? a.value - b.value : b.value - a.value;
   });
-  var rank = 0;
-  for (var i = 0; i < rows.length; i++) if (rows[i].mine) { rank = i + 1; break; }
-  return { board: board, top: rows.slice(0, 10), rank: rank, entries: rows.length };
+  var r = 0;
+  for (var i = 0; i < rows.length; i++) if (rows[i].mine) { r = i + 1; break; }
+  return { top: rows.slice(0, 10), rank: r, entries: rows.length };
 }
 
 function resetBoard(board) {

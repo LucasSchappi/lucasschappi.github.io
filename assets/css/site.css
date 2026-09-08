@@ -346,6 +346,23 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
 .board .board__row--mine .board__name { font-weight: 600; }
 .board .board__row--mine .board__score { color: var(--text); }
 .board-status { margin: 0 0 22px; color: var(--text-2); font-size: 14px; }
+.board__empty { color: var(--text-2); justify-content: flex-start; }
+.board-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; max-width: 780px; }
+.board-pair .board { max-width: none; }
+.board-sub { margin: 0 0 12px; font-size: 14px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-2); }
+@media (max-width: 700px) { .board-pair { grid-template-columns: 1fr; gap: 8px; } }
+
+/* Today's challenge --------------------------------------------------------- */
+.chal-name { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+.chal-blurb { margin: 0 0 20px; color: var(--text-2); max-width: 62ch; }
+.chal-note { margin: 16px 0 0; font-size: 13px; color: var(--text-2); }
+.chal-week { list-style: none; margin: 22px 0 0; padding: 0; max-width: 420px;
+  border-top: 1px solid var(--border); font-size: 14px; }
+.chal-week li { display: flex; justify-content: space-between; gap: 16px;
+  padding: 8px 0; border-bottom: 1px solid var(--border); color: var(--text-2); }
+.chal-week li.is-today { color: var(--text); font-weight: 600; }
+.btn--disabled { opacity: 0.5; pointer-events: none; }
 .board-name { max-width: 480px; }
 .board-name > label { display: block; font-size: 14px; margin-bottom: 8px; }
 .board-name__row { display: flex; gap: 8px; }

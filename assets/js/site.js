@@ -364,32 +364,61 @@
   }
 
 
-  /* Leaderboard ----------------------------------------------------------
-     Shares the browser's hidden code with the game itself: both live on this
-     domain, so the game's localStorage is this page's localStorage. Posting
-     the code without a score asks for the board with your own row marked, and
-     creates nothing if you have never played. The section stays hidden until
-     the board actually answers. */
+  /* Challenges and leaderboards -------------------------------------------
+     The day is taken in UTC, the same way the game and the server take it, so
+     everyone is on the same challenge and the same map wherever they are. */
   var BOARD_ENDPOINT = "https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec";
 
-  var board = document.querySelector("[data-board]");
-  if (board && BOARD_ENDPOINT) {
-    var boardName = board.getAttribute("data-board");
-    var rows = board.querySelector("[data-board-list]");
-    var bstatus = board.querySelector("[data-board-status]");
-    var namePanel = board.querySelector("[data-board-name]");
-    var nameInput = document.getElementById("board-pilot");
-    var nameSave = board.querySelector("[data-board-save]");
+  var CHALLENGES = {
+    glide:  { name: "Dead stick", board: "chal-glide", unit: "s", built: true,
+              blurb: "No engine, and you cannot climb. Stay in the air as long as you can." },
+    target: { name: "Bullseye", built: false,
+              blurb: "A flat map with one enormous target. The closest crash to the middle wins." },
+    low:    { name: "Lowest death", board: "chal-low", unit: "ft", built: true,
+              blurb: "Die as far below sea level as you can. The deepest trench is about −179 ft." },
+    high:   { name: "Highest death", board: "chal-high", unit: "ft", built: true,
+              blurb: "Hit the highest ground you can find. The tallest peaks are around 1,200 ft." },
+    land:   { name: "Land it", built: false,
+              blurb: "Put it down under 50 knots with the wings level. Fastest landing wins." },
+    course: { name: "Checkpoint run", built: false,
+              blurb: "A course of gates to fly through. Fastest time wins." }
+  };
+  var CHAL_ORDER = ["glide", "target", "low", "high", "land", "course"];
+  var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-    function stored(k) {
-      try { return localStorage.getItem(k) || ""; } catch (e) { return ""; }
-    }
-    var myCode = stored("fs-code");
+  function utcDay() { return new Date().toISOString().slice(0, 10); }
 
-    function paint(data) {
-      if (!data || !data.top) return false;
-      rows.innerHTML = "";
-      data.top.forEach(function (r) {
+  // Matches challengeOfDay() in the Apps Script. Saturday borrows one of the
+  // others, picked from the date so everyone gets the same one.
+  function challengeOfDay(day) {
+    var p = day.split("-");
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    var dow = d.getUTCDay();
+    if (dow < 6) return CHAL_ORDER[dow];
+    var n = Math.floor(d.getTime() / 86400000);
+    return CHAL_ORDER[((n % 6) + 6) % 6];
+  }
+
+  function storedItem(k) {
+    try { return localStorage.getItem(k) || ""; } catch (e) { return ""; }
+  }
+
+  /* One board section: fills its tables, marks your row, and offers a rename
+     if you have ever played it. Hidden until the board actually answers, so a
+     backend that is down shows nothing rather than an empty table. */
+  function wireBoard(section, boardName, unit) {
+    var rows = section.querySelector("[data-board-list]");
+    var todayRows = section.querySelector("[data-board-today]");
+    var status = section.querySelector("[data-board-status]");
+    var namePanel = section.querySelector("[data-board-name]");
+    var nameInput = namePanel && namePanel.querySelector("input");
+    var nameSave = section.querySelector("[data-board-save]");
+    var myCode = storedItem("fs-code");
+
+    function fill(el, list) {
+      if (!el) return;
+      el.innerHTML = "";
+      (list || []).forEach(function (r) {
         var li = document.createElement("li");
         if (r.mine) li.className = "board__row--mine";
         var n = document.createElement("span");
@@ -397,60 +426,136 @@
         n.textContent = r.name;                 // text, never markup
         var v = document.createElement("span");
         v.className = "board__score";
-        v.textContent = r.value + " ft";
+        v.textContent = r.value + " " + unit;
         li.appendChild(n); li.appendChild(v);
-        rows.appendChild(li);
+        el.appendChild(li);
       });
-      if (!data.entries) {
-        bstatus.textContent = "Nobody has crashed yet. Be the first.";
-      } else if (data.rank) {
-        bstatus.textContent = "You are " + data.rank + " of " + data.entries + ".";
-      } else {
-        bstatus.textContent = data.entries + (data.entries === 1 ? " pilot" : " pilots") + " so far.";
+      if (!el.children.length) {
+        var li2 = document.createElement("li");
+        li2.className = "board__empty";
+        li2.textContent = "Nobody yet.";
+        el.appendChild(li2);
       }
-      // Only offer the name box to someone who has actually played.
-      if (myCode && data.rank) {
-        nameInput.value = stored("fs-name");
+    }
+
+    function paint(data) {
+      if (!data || !data.top) return false;
+      fill(rows, data.top);
+      if (todayRows) fill(todayRows, data.today || []);
+      if (data.today !== undefined) {
+        status.textContent = data.todayRank
+          ? "You are " + data.todayRank + " of " + data.todayEntries + " today."
+          : (data.todayEntries
+              ? data.todayEntries + (data.todayEntries === 1 ? " pilot" : " pilots") + " today."
+              : "Nobody has flown it today.");
+      } else {
+        status.textContent = data.rank
+          ? "You are " + data.rank + " of " + data.entries + "."
+          : (data.entries
+              ? data.entries + (data.entries === 1 ? " pilot" : " pilots") + " so far."
+              : "Nobody has crashed yet. Be the first.");
+      }
+      if (namePanel && myCode && (data.rank || data.todayRank)) {
+        nameInput.value = storedItem("fs-name");
         namePanel.hidden = false;
       }
-      board.hidden = false;
+      section.hidden = false;
       return true;
     }
 
     function ask(name) {
-      var body = { action: "score", board: boardName, code: myCode };
-      if (name !== undefined) body.name = name;
-      else body.name = stored("fs-name");
       return fetch(BOARD_ENDPOINT, {
         method: "POST",
         // text/plain keeps this a simple request, so no preflight is sent.
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          action: "score", board: boardName, code: myCode,
+          name: name === undefined ? storedItem("fs-name") : name
+        })
       }).then(function (r) { return r.json(); });
     }
 
     if (nameSave) {
       nameSave.addEventListener("click", function () {
-        var n = nameInput.value.trim() || stored("fs-name");
+        var n = nameInput.value.trim() || storedItem("fs-name");
         nameInput.value = n;
         try { localStorage.setItem("fs-name", n); } catch (e) {}
-        bstatus.textContent = "Saving\u2026";
+        status.textContent = "Saving…";
         ask(n).then(paint).catch(function () {
-          bstatus.textContent = "Could not save that just now.";
+          status.textContent = "Could not save that just now.";
         });
       });
     }
 
     if (myCode) {
-      ask().then(paint).catch(function () { /* leave the section hidden */ });
+      ask().then(paint).catch(function () { /* leave it hidden */ });
     } else {
       // Never played here, so there is no code to send: just read the board.
       fetch(BOARD_ENDPOINT + "?board=" + encodeURIComponent(boardName))
         .then(function (r) { return r.json(); })
         .then(paint)
-        .catch(function () { /* leave the section hidden */ });
+        .catch(function () { /* leave it hidden */ });
     }
   }
+
+  var chalSection = document.querySelector("[data-challenge]");
+  if (chalSection && BOARD_ENDPOINT) {
+    var day = utcDay();
+    var id = challengeOfDay(day);
+    var c = CHALLENGES[id];
+
+    chalSection.querySelector("[data-chal-name]").textContent = c.name;
+    chalSection.querySelector("[data-chal-blurb]").textContent = c.blurb;
+
+    var play = chalSection.querySelector("[data-chal-play]");
+    var note = chalSection.querySelector("[data-chal-note]");
+    if (c.built) {
+      play.href = "/games/flight-sim/play/?challenge=" + id;
+      note.textContent = "Everyone flies the same map today, so the times are"
+        + " comparable. It changes at midnight UTC.";
+    } else {
+      play.classList.add("btn--disabled");
+      play.removeAttribute("href");
+      play.textContent = "Not built yet";
+      note.textContent = "This one is still being made. The other days work.";
+    }
+
+    // What the rest of the week holds.
+    var weekEl = chalSection.querySelector("[data-chal-week]");
+    if (weekEl) {
+      var base = new Date(day + "T00:00:00Z");
+      for (var i = 0; i < 7; i++) {
+        var d = new Date(base.getTime() + i * 86400000);
+        var key = d.toISOString().slice(0, 10);
+        var cid = challengeOfDay(key);
+        var li = document.createElement("li");
+        if (i === 0) li.className = "is-today";
+        var dn = document.createElement("span");
+        dn.textContent = i === 0 ? "Today" : DAY_NAMES[d.getUTCDay()];
+        var cn = document.createElement("span");
+        cn.textContent = CHALLENGES[cid].name + (CHALLENGES[cid].built ? "" : " (soon)");
+        li.appendChild(dn); li.appendChild(cn);
+        weekEl.appendChild(li);
+      }
+    }
+
+    var chalBoard = document.querySelector("[data-board-daily]");
+    if (chalBoard && c.built) {
+      chalBoard.setAttribute("data-board", c.board);
+      var head = chalBoard.querySelector("[data-chal-board-head]");
+      if (head) head.textContent = c.name;
+      wireBoard(chalBoard, c.board, c.unit);
+    }
+  }
+
+  // Any remaining board sections wire themselves up from their own attribute.
+  Array.prototype.forEach.call(
+    document.querySelectorAll("[data-board]:not([data-board-daily])"),
+    function (sec) {
+      var n = sec.getAttribute("data-board");
+      if (n && BOARD_ENDPOINT) wireBoard(sec, n, "ft");
+    }
+  );
 
   /* Game of the week poll ------------------------------------------------
      A static site cannot count votes on its own, so this talks to a small
