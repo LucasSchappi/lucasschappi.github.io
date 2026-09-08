@@ -1552,7 +1552,10 @@ canvas { display: block; }
     { t: 'DUSK',   d: 3.5, cam: 'wing',    alt: 130, speed: 92,  turn: 0.14,  bank: 0.55, climb: -6 },
     { t: 'DUSK',   d: 3.0, cam: 'orbit',   alt: 240, speed: 88,  turn: 0,     bank: 0.05, climb: 0 },
     { t: 'NIGHT',  d: 3.5, cam: 'cockpit', alt: 120, speed: 96,  turn: 0.08,  bank: 0.3,  climb: 0 },
-    { t: 'DUSK',   d: 4.5, cam: 'ground',  alt: 180, speed: 110, turn: 0.03,  bank: 0.2,  climb: -46, dive: true },
+    // Runs in level, pulls all the way round as though somebody were holding
+    // S, rolls out and puts it into the hillside.
+    { t: 'DUSK',   d: 7.5, cam: 'ground',  alt: 150, speed: 108, turn: 0.02,  bank: 0.18, climb: 0,
+      dive: true, loop: { at: 1.0, dur: 2.8 }, divePitch: -1.25 },
     { t: 'DAWN',   d: 7.0, cam: 'hero',    title: true }
   ];
 
@@ -1574,6 +1577,35 @@ canvas { display: block; }
       + SHOTS.length + '   ' + (sh.cam || '') + ' ' + (sh.t || '')
       + '   ' + shotTime.toFixed(1) + '/' + (sh.d || 0) + 's'
       + (trailerPaused ? '   PAUSED' : '');
+  }
+
+  /* Where the nose is pointing, and how far round a loop it is. A shot with a
+     loop is flown along its nose rather than as heading plus climb rate,
+     because half way round a loop those two are not the same thing at all. */
+  function pitchAt(sh, t) {
+    if (!sh.loop) return Math.atan2(sh.climb || 0, sh.speed);
+    if (t < sh.loop.at) return 0;
+    const u = (t - sh.loop.at) / sh.loop.dur;
+    if (u < 1) return u * Math.PI * 2;              // all the way round
+    // Out the top of the loop and down into the ground.
+    const settle = Math.min(1, (t - sh.loop.at - sh.loop.dur) / 0.7);
+    return (sh.divePitch || -0.9) * settle;
+  }
+
+  function bankAt(sh, t) {
+    if (!sh.loop) return sh.bank;
+    // Wings level through the loop: a barrel roll is a different manoeuvre.
+    const into = (t - sh.loop.at) / 0.5;
+    const outOf = (t - sh.loop.at - sh.loop.dur) / 0.5;
+    if (into <= 0 || outOf >= 1) return sh.bank;
+    const k = into < 1 ? 1 - into : outOf > 0 ? outOf : 0;
+    return sh.bank * Math.max(0, Math.min(1, k));
+  }
+
+  const _nose = new THREE.Vector3();
+  function noseVec(heading, pitch, out) {
+    const c = Math.cos(pitch);
+    return out.set(-Math.sin(heading) * c, Math.sin(pitch), -Math.cos(heading) * c);
   }
 
   function beginShot(i) {
@@ -1651,19 +1683,32 @@ canvas { display: block; }
      end of the shot. Rising is better than moving: the framing stays put and
      the shot simply becomes a higher vantage point. */
   function liftUntilVisible(cam, sh) {
-    const end = sh.speed * sh.d;
-    const climb = sh.climb || 0;
-    for (let step = 0; step < 40; step++) {
-      let ok = true;
-      for (let k = 0; k <= 6 && ok; k++) {
-        const u = k / 6;
-        _losA.copy(tPos).addScaledVector(_tf, end * u);
-        _losA.y = tPos.y + climb * sh.d * u;
-        // The dive ends in the ground; sighting its last moment is the point.
-        if (sh.dive) _losA.y = Math.max(_losA.y, heightAt(_losA.x, _losA.z) + 2);
-        if (!canSee(cam, _losA)) ok = false;
+    // Re-fly the shot to find where the aeroplane will be. Guessing from
+    // heading and climb rate would put the camera in the wrong place for
+    // anything that does not travel in a straight line.
+    const pts = [];
+    const p = tPos.clone();
+    let h = tHeading;
+    const N = 14, step = sh.d / N;
+    for (let i = 0; i <= N; i++) {
+      const tt = i * step;
+      const pt = p.clone();
+      if (sh.dive) pt.y = Math.max(pt.y, heightAt(pt.x, pt.z) + 2);
+      pts.push(pt);
+      const pit = pitchAt(sh, tt);
+      h += (sh.turn || 0) * step;
+      if (sh.loop) {
+        noseVec(h, pit, _losB);
+        p.addScaledVector(_losB, sh.speed * step);
+      } else {
+        _losB.set(-Math.sin(h), 0, -Math.cos(h));
+        p.addScaledVector(_losB, sh.speed * step);
+        p.y += (sh.climb || 0) * step;
       }
-      if (ok) return;
+    }
+
+    for (let lift = 0; lift < 40; lift++) {
+      if (pts.every(function (pt) { return canSee(cam, pt); })) return;
       cam.y += 9;
     }
   }
@@ -1729,9 +1774,16 @@ canvas { display: block; }
       airspeed = sh.speed;
       tHeading += (sh.turn || 0) * dt;
       _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
-      tPos.addScaledVector(_tf, sh.speed * dt);
-      tPos.y += (sh.climb || 0) * dt;
-      tPitch = Math.atan2(sh.climb || 0, sh.speed);
+      tPitch = pitchAt(sh, shotTime);
+      tBank = bankAt(sh, shotTime);
+      if (sh.loop) {
+        // Flown along the nose, so the loop actually goes over the top.
+        noseVec(tHeading, tPitch, _nose);
+        tPos.addScaledVector(_nose, sh.speed * dt);
+      } else {
+        tPos.addScaledVector(_tf, sh.speed * dt);
+        tPos.y += (sh.climb || 0) * dt;
+      }
 
       const ground = heightAt(tPos.x, tPos.z);
       if (sh.dive && tPos.y < ground + 3) {
@@ -1742,7 +1794,7 @@ canvas { display: block; }
         }
       } else {
         planeGroup.position.copy(tPos);
-        _te.set(tPitch, tHeading, sh.bank, 'YXZ');
+        _te.set(tPitch, tHeading, tBank, 'YXZ');
         planeGroup.quaternion.setFromEuler(_te);
         spinProp(PROP_RATE, dt);
       }
