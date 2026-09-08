@@ -302,10 +302,19 @@ canvas { display: block; }
              blurb: 'Die as far below sea level as you can.' },
     high:  { name: 'HIGHEST DEATH', board: 'chal-high',  lower: false, unit: 'ft',
              blurb: 'Hit the highest ground you can find.' },
-    glide: { name: 'DEAD STICK',    board: 'chal-glide', lower: false, unit: 's',
-             blurb: 'No engine, and you cannot climb. Stay up as long as you can.' }
+    glide:  { name: 'DEAD STICK',    board: 'chal-glide',  lower: false, unit: 's',
+              blurb: 'No engine, and you cannot climb. Stay up as long as you can.' },
+    target: { name: 'BULLSEYE',      board: 'chal-target', lower: true,  unit: 'm',
+              blurb: 'One target on an empty plain. Crash as near the middle as you can.' },
+    land:   { name: 'LAND IT',       board: 'chal-land',   lower: true,  unit: 's',
+              blurb: 'Put it down under 50 kts, wings level, on dry land. Fastest wins.' },
+    course: { name: 'CHECKPOINT RUN', board: 'chal-course', lower: true, unit: 's',
+              blurb: 'Fly through every gate. Fastest time wins, and a crash ends the run.' }
   };
   const chalId = params.get('challenge');
+  // Bullseye is flown over an empty plain: no hills to hide behind, and
+  // nothing to judge but where you come down.
+  const TARGET_MAP = chalId === 'target';
   const CHALLENGE = Object.prototype.hasOwnProperty.call(CHALLENGES, chalId)
     ? CHALLENGES[chalId] : null;
 
@@ -358,6 +367,7 @@ canvas { display: block; }
     return (1 - Math.abs(v)) * amp; // ridge transform
   }
   function heightAt(wx, wz) {
+    if (TARGET_MAP) return 0;
     const x = wx + OFFSET_X, z = wz + OFFSET_Z;
     let h = 0;
     // Large mountain ranges
@@ -1311,9 +1321,16 @@ canvas { display: block; }
         // hand better scores to worse computers.
         const hitFeet = Math.round((terrainH + 2) * 3.28);
         const aloft = Math.round(elapsed - runStart);
-        // Dead stick is scored on time in the air; the others on where you hit.
-        const score = CHALLENGE === CHALLENGES.glide ? aloft : hitFeet;
-        submitCrash(score);
+        const missBy = Math.round(Math.hypot(planeGroup.position.x, planeGroup.position.z));
+        // Each challenge measures something different about the same crash.
+        let score = hitFeet;
+        if (CHALLENGE === CHALLENGES.glide) score = aloft;
+        else if (CHALLENGE === CHALLENGES.target) score = missBy;
+        // Landing and the course are only scored by finishing them, so dying
+        // on those runs puts nothing on the board.
+        else if (CHALLENGE === CHALLENGES.land || CHALLENGE === CHALLENGES.course) score = null;
+        if (score !== null) submitCrash(score);
+        else boardEl().classList.add('hidden');
 
         clearTimeout(crashCardTimer);
         crashCardTimer = setTimeout(function () {
@@ -1326,17 +1343,40 @@ canvas { display: block; }
           step.classList.remove('hidden');
           step.querySelector('.kicker').style.display = 'none';
           step.querySelector('h1').textContent = 'CRASHED';
-          step.querySelector('.sub').textContent = CHALLENGE === CHALLENGES.glide
-            ? aloft + ' seconds aloft  ' + String.fromCharCode(183) + '  ' + hitFeet + ' ft'
-            : hitFeet + ' ft  ' + String.fromCharCode(183) + '  ' + hitSpeed + ' kts';
+          const dot = '  ' + String.fromCharCode(183) + '  ';
+          let sub = hitFeet + ' ft' + dot + hitSpeed + ' kts';
+          if (CHALLENGE === CHALLENGES.glide) sub = aloft + ' seconds aloft' + dot + hitFeet + ' ft';
+          else if (CHALLENGE === CHALLENGES.target) sub = missBy + ' m from the middle';
+          else if (CHALLENGE === CHALLENGES.land) sub = 'No landing' + dot + hitSpeed + ' kts';
+          else if (CHALLENGE === CHALLENGES.course) sub = 'Gate ' + gateIndex + ' of ' + gates.length;
+          step.querySelector('.sub').textContent = sub;
           step.querySelector('.prompt').textContent = 'Click or press SPACE to restart';
         }, 2100);
         return;
       }
+      // Not a crash: slow enough and level enough to be a landing.
       planeGroup.position.y = terrainH + 2;
       velocity.y = Math.max(velocity.y, 0);
+
+      if (CHALLENGE === CHALLENGES.land && terrainH > 1 && airspeed < 50) {
+        // Dry land only. Settling onto the sea bed is not a landing.
+        const secs = Math.max(1, Math.round(elapsed - runStart));
+        finishRun('LANDED', secs + ' seconds  ' + String.fromCharCode(183) + '  '
+          + Math.floor(airspeed) + ' kts', secs);
+        return;
+      }
     }
 
+
+    if (CHALLENGE === CHALLENGES.course) {
+      checkGates();
+      if (gateIndex >= gates.length) {
+        const secs = Math.max(1, Math.round(elapsed - runStart));
+        finishRun('COURSE CLEAR', secs + ' seconds  ' + String.fromCharCode(183)
+          + '  ' + gates.length + ' gates', secs);
+        return;
+      }
+    }
 
     // Propeller spin
     propGroup.rotation.z += throttle * 80 * dt;
@@ -1567,6 +1607,28 @@ canvas { display: block; }
     planeGroup.visible = true;
   }
 
+  // Finishing a run without dying: a landing, or the last gate. Shows the same
+  // card as a crash, with a different word on it.
+  function finishRun(headline, detail, score) {
+    if (crashed || !playing) return;
+    crashed = true; playing = false;      // "crashed" only means the run is over
+    stalling = false;
+    if (score !== null) submitCrash(score);
+    clearTimeout(crashCardTimer);
+    crashCardTimer = setTimeout(function () {
+      const overlay = document.getElementById('overlay');
+      overlay.classList.remove('hidden');
+      overlay.classList.add('instant');
+      document.getElementById('step-controls').classList.add('hidden');
+      const step = document.getElementById('step-title');
+      step.classList.remove('hidden');
+      step.querySelector('.kicker').style.display = 'none';
+      step.querySelector('h1').textContent = headline;
+      step.querySelector('.sub').textContent = detail;
+      step.querySelector('.prompt').textContent = 'Click or press SPACE to fly again';
+    }, 900);
+  }
+
   function updateBlast(dt) {
     if (blastTime < 0) return;
     blastTime += dt;
@@ -1654,6 +1716,103 @@ canvas { display: block; }
     }
   }
 
+  // ===== CHALLENGE FURNITURE =====
+  // The bullseye, and the gates for the checkpoint run. Both are built from
+  // the day's seed, so everyone flying today gets the same thing.
+  const TARGET_R = 520;                 // outer ring, metres
+  let targetMesh = null;
+
+  if (TARGET_MAP) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 512;
+    const g = c.getContext('2d');
+    // Five rings, painted large enough to still read from height.
+    const bands = [
+      [1.00, '#e8e2d4'], [0.80, '#c94b3d'], [0.60, '#e8e2d4'],
+      [0.40, '#c94b3d'], [0.22, '#e8e2d4'], [0.09, '#c9a227']
+    ];
+    bands.forEach(function (b) {
+      g.beginPath();
+      g.arc(256, 256, 256 * b[0], 0, Math.PI * 2);
+      g.fillStyle = b[1];
+      g.fill();
+    });
+    g.strokeStyle = 'rgba(0,0,0,0.35)';
+    g.lineWidth = 3;
+    bands.forEach(function (b) {
+      g.beginPath();
+      g.arc(256, 256, 256 * b[0], 0, Math.PI * 2);
+      g.stroke();
+    });
+    const tex = new THREE.CanvasTexture(c);
+    targetMesh = new THREE.Mesh(
+      new THREE.CircleGeometry(TARGET_R, 96),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 })
+    );
+    targetMesh.rotation.x = -Math.PI / 2;
+    targetMesh.position.y = 0.15;       // just clear of the ground
+    targetMesh.receiveShadow = true;
+    scene.add(targetMesh);
+  }
+
+  // Checkpoint run: a line of gates wandering across the map.
+  const GATE_R = 42;
+  const gates = [];
+  let gateIndex = 0;
+
+  if (CHALLENGE === CHALLENGES.course) {
+    const gateMat = new THREE.MeshStandardMaterial({
+      color: 0x2ad4ff, emissive: 0x0a5a75, roughness: 0.5, metalness: 0.2
+    });
+    const doneMat = new THREE.MeshStandardMaterial({
+      color: 0x2f3b40, emissive: 0x000000, roughness: 0.9
+    });
+    const gateGeo = new THREE.TorusGeometry(GATE_R, 3.2, 10, 40);
+    // A circuit rather than a wander: eight gates spaced round a rough circle,
+    // so the course stays inside one tile and finishes back near where it
+    // started instead of trailing off towards the horizon.
+    const GATE_N = 8;
+    for (let i = 0; i < GATE_N; i++) {
+      const a = (i / GATE_N) * Math.PI * 2 + (rand() - 0.5) * 0.32;
+      const r = 1000 + rand() * 420;
+      const gx = Math.sin(a) * r;
+      const gz = -Math.cos(a) * r;
+      const ground = heightAt(gx, gz);
+      const y = Math.max(ground + 70, 110) + rand() * 90;
+      const m = new THREE.Mesh(gateGeo, gateMat.clone());
+      m.position.set(gx, y, gz);
+      // A torus has its hole down +Z, and the way round the circuit at angle a
+      // is (cos a, 0, sin a), which is this rotation about Y.
+      m.rotation.y = Math.PI / 2 - a;
+      scene.add(m);
+      gates.push({ mesh: m, pos: m.position.clone(), done: false, mat: doneMat });
+    }
+  }
+
+  function resetGates() {
+    gateIndex = 0;
+    gates.forEach(function (g) {
+      g.done = false;
+      g.mesh.material.color.setHex(0x2ad4ff);
+      g.mesh.material.emissive.setHex(0x0a5a75);
+    });
+  }
+
+  // A gate counts when the aeroplane is inside its ring. Checking distance to
+  // the centre rather than a plane crossing means a fast pass cannot slip
+  // between two frames without being noticed, so long as the ring is wide.
+  function checkGates() {
+    if (gateIndex >= gates.length) return;
+    const g = gates[gateIndex];
+    if (planeGroup.position.distanceTo(g.pos) < GATE_R) {
+      g.done = true;
+      g.mesh.material.color.setHex(0x2f3b40);
+      g.mesh.material.emissive.setHex(0x000000);
+      gateIndex++;
+      toast(gateIndex >= gates.length ? 'FINAL GATE' : 'GATE ' + gateIndex + ' / ' + gates.length);
+    }
+  }
+
   // ===== LEADERBOARD =====
   // Lowest altitude you died at. The browser keeps a random code it never
   // shows anyone; the server files the entry under that code, so typing a new
@@ -1663,7 +1822,7 @@ canvas { display: block; }
   // post as you, and clearing site data loses it. For a score table on a
   // hobby site that is the right trade for never asking anyone to sign up.
   const BOARD_URL = 'https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec';
-  const BOARD = CHALLENGE ? CHALLENGE.board : 'low-crash';
+  const BOARD = CHALLENGE ? CHALLENGE.board : null;
 
   function pilotCode() {
     let c = null;
@@ -1714,9 +1873,14 @@ canvas { display: block; }
     if (!CHALLENGE) return;
     const live = document.getElementById('cb-live');
     if (!playing) { live.textContent = CHALLENGE.blurb; return; }
-    live.textContent = CHALLENGE === CHALLENGES.glide
-      ? Math.floor(elapsed - runStart) + ' s aloft'
-      : Math.floor(planeGroup.position.y * 3.28) + ' ft';
+    const t = Math.floor(elapsed - runStart);
+    if (CHALLENGE === CHALLENGES.glide) live.textContent = t + ' s aloft';
+    else if (CHALLENGE === CHALLENGES.land) live.textContent = t + ' s';
+    else if (CHALLENGE === CHALLENGES.course)
+      live.textContent = 'gate ' + (gateIndex + 1) + ' of ' + gates.length + '   ' + t + ' s';
+    else if (CHALLENGE === CHALLENGES.target)
+      live.textContent = Math.round(Math.hypot(planeGroup.position.x, planeGroup.position.z)) + ' m out';
+    else live.textContent = Math.floor(planeGroup.position.y * 3.28) + ' ft';
   }
   let lastScore = null;
 
@@ -1791,6 +1955,10 @@ canvas { display: block; }
   }
 
   function submitCrash(feet) {
+    // Free play rolls a new world every time, so there is nothing to compare
+    // one flight with another. Boards belong to the challenges, where everyone
+    // is flying the same map.
+    if (!CHALLENGE) return;
     lastScore = feet;
     document.getElementById('board-me').textContent = 'Sending...';
     boardEl().classList.remove('hidden');
@@ -1813,6 +1981,7 @@ canvas { display: block; }
   // Typing must not fly the aeroplane, and clicking the panel must not restart
   // the flight: both space and mousedown are wired to advance().
   (function wireBoard() {
+    if (!CHALLENGE) return;
     const panel = boardEl();
     const input = document.getElementById('pilot-name');
     const save = document.getElementById('pilot-save');
@@ -2226,6 +2395,15 @@ canvas { display: block; }
     velocity.set(0, 0, -START_SPEED);
     glideCeiling = START_ALT;
     runStart = elapsed;
+    resetGates();
+    if (TARGET_MAP) {
+      // Start out over the plain so the target has to be flown to, not
+      // dropped onto from directly above.
+      planeGroup.position.set(0, START_ALT, 2600);
+      camera.position.set(0, START_ALT + 6, 2624);
+      smoothCamPos.set(0, START_ALT + 6, 2624);
+      smoothLookTarget.set(0, START_ALT, 2575);
+    }
     camera.position.set(0, START_ALT + 6, 24);
     smoothCamPos.set(0, START_ALT + 6, 24);
     smoothLookTarget.set(0, START_ALT, -25);

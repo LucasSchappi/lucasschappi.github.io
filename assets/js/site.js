@@ -372,16 +372,16 @@
   var CHALLENGES = {
     glide:  { name: "Dead stick", board: "chal-glide", unit: "s", built: true,
               blurb: "No engine, and you cannot climb. Stay in the air as long as you can." },
-    target: { name: "Bullseye", built: false,
-              blurb: "A flat map with one enormous target. The closest crash to the middle wins." },
+    target: { name: "Bullseye", board: "chal-target", unit: "m", built: true,
+              blurb: "One target on an empty plain. Crash as near the middle as you can." },
     low:    { name: "Lowest death", board: "chal-low", unit: "ft", built: true,
               blurb: "Die as far below sea level as you can. The deepest trench is about −179 ft." },
     high:   { name: "Highest death", board: "chal-high", unit: "ft", built: true,
               blurb: "Hit the highest ground you can find. The tallest peaks are around 1,200 ft." },
-    land:   { name: "Land it", built: false,
-              blurb: "Put it down under 50 knots with the wings level. Fastest landing wins." },
-    course: { name: "Checkpoint run", built: false,
-              blurb: "A course of gates to fly through. Fastest time wins." }
+    land:   { name: "Land it", board: "chal-land", unit: "s", built: true,
+              blurb: "Put it down under 50 knots, wings level, on dry land. Fastest wins." },
+    course: { name: "Checkpoint run", board: "chal-course", unit: "s", built: true,
+              blurb: "Fly through all eight gates. Fastest time wins, and a crash ends the run." }
   };
   var CHAL_ORDER = ["glide", "target", "low", "high", "land", "course"];
   var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -537,6 +537,21 @@
         li.appendChild(dn); li.appendChild(cn);
         weekEl.appendChild(li);
       }
+    }
+
+    // ?try on the address makes every challenge a link, for checking one
+    // without waiting for its day to come round.
+    if (weekEl && /[?&]try\b/.test(location.search)) {
+      Array.prototype.forEach.call(weekEl.children, function (li, i) {
+        var d2 = new Date(new Date(day + "T00:00:00Z").getTime() + i * 86400000);
+        var cid2 = challengeOfDay(d2.toISOString().slice(0, 10));
+        if (!CHALLENGES[cid2].built) return;
+        var a = document.createElement("a");
+        a.href = "/games/flight-sim/play/?challenge=" + cid2;
+        a.textContent = li.lastChild.textContent;
+        li.replaceChild(a, li.lastChild);
+      });
+      note.textContent += " You are in try mode: every day below is a link.";
     }
 
     var chalBoard = document.querySelector("[data-board-daily]");

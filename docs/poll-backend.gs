@@ -142,7 +142,10 @@ var BOARDS = {
   // Daily challenges. Each keeps an all-time board and a board for today.
   'chal-low':   { lower: true,  min: -220, max: 200000 },   // lowest death, ft
   'chal-high':  { lower: false, min: -220, max: 200000 },   // highest death, ft
-  'chal-glide': { lower: false, min: 0,    max: 36000 }     // seconds aloft
+  'chal-glide': { lower: false, min: 0,    max: 36000 },    // seconds aloft
+  'chal-target':{ lower: true,  min: 0,    max: 60000 },    // metres from the middle
+  'chal-land':  { lower: true,  min: 1,    max: 36000 },    // seconds to land
+  'chal-course':{ lower: true,  min: 1,    max: 36000 }     // seconds for the course
 };
 var BOARD_KEEP = 50;      // a script property holds 9 kB; 50 entries is well under
 var DAY_BOARDS_KEPT = 8;  // yesterday is worth a look; last month is clutter
