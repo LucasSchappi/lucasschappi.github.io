@@ -259,7 +259,7 @@ canvas { display: block; }
     </div>
     <div class="bottom">
       <div class="controls-info">
-        W / S &mdash; Pitch up / down<br>
+        W / S &mdash; Nose down / up<br>
         A / D &mdash; Roll left / right<br>
         Q / E &mdash; Yaw left / right<br>
         SHIFT / CTRL &mdash; Throttle up / down<br>
@@ -1293,8 +1293,9 @@ canvas { display: block; }
 
     const controlAuthority = Math.min(airspeed / 80, 1);
     let pitchInput = 0, rollInput = 0, yawInput = 0;
-    if (keys['KeyW']) pitchInput = 1;
-    if (keys['KeyS']) pitchInput = -1;
+    // Inverted, the way a stick works: W pushes the nose down, S pulls it up.
+    if (keys['KeyW']) pitchInput = -1;
+    if (keys['KeyS']) pitchInput = 1;
     if (keys['KeyA']) rollInput = -1;
     if (keys['KeyD']) rollInput = 1;
     if (keys['KeyQ']) yawInput = -1;
