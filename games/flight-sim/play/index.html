@@ -354,8 +354,14 @@ canvas { display: block; }
   const seedParam = parseInt(params.get('seed'), 10);
   // A challenge map comes from the date, not the address bar: picking your own
   // seed would mean picking your own terrain, and the board would be a fiction.
+  // A trailer wants the same world every time: a random one means the shots
+  // cannot be judged, let alone tuned, because the hills move between takes.
+  // ?seed= still overrides, for hunting a better-looking world.
+  const TRAILER_SEED = 7;
   const SEED = CHALLENGE ? dayHash(chalId + ':' + CHAL_DAY)
-    : (Number.isFinite(seedParam) ? (seedParam >>> 0) : (Math.random() * 4294967296) >>> 0);
+    : Number.isFinite(seedParam) ? (seedParam >>> 0)
+    : TRAILER ? TRAILER_SEED
+    : (Math.random() * 4294967296) >>> 0;
   const rand = mulberry32(SEED);
   const OFFSET_X = (rand() - 0.5) * 400000;
   const OFFSET_Z = (rand() - 0.5) * 400000;
@@ -1535,6 +1541,7 @@ canvas { display: block; }
 
     if (sh.intro || sh.title) {
       introTime = 0;      // both hero shots fly the approach in from the start
+      introProp = 46;
       if (sh.title) {
         const ov = document.getElementById('overlay');
         ov.classList.remove('hidden');
@@ -1566,6 +1573,7 @@ canvas { display: block; }
       _tr.set(_tf.z, 0, -_tf.x);                 // right of the flight path
       camAnchor.copy(heroPos).addScaledVector(_tr, sh.dive ? 150 : 95);
       camAnchor.y = heightAt(camAnchor.x, camAnchor.z) + (sh.dive ? 30 : 14);
+      liftUntilVisible(camAnchor, sh);
     }
     planeGroup.visible = true;
     clearBlast();
@@ -1577,6 +1585,44 @@ canvas { display: block; }
     camera.fov = mount ? mount.fov : 70;
     camera.near = mount ? mount.near : 0.5;
     camera.updateProjectionMatrix();
+  }
+
+  /* A camera on the ground near the good-looking part of the world is a camera
+     with hills in the way, and the aeroplane vanishes behind one. This walks
+     the straight line from the camera to a point on the flight path and asks
+     whether the ground crosses it. */
+  const _losA = new THREE.Vector3(), _losB = new THREE.Vector3();
+  function canSee(from, to) {
+    const STEPS = 48;
+    for (let i = 1; i < STEPS; i++) {
+      const u = i / STEPS;
+      const x = from.x + (to.x - from.x) * u;
+      const z = from.z + (to.z - from.z) * u;
+      const y = from.y + (to.y - from.y) * u;
+      if (heightAt(x, z) > y - 4) return false;   // 4 m of daylight underneath
+    }
+    return true;
+  }
+
+  /* Raise the camera until it can see the aeroplane at the start, middle and
+     end of the shot. Rising is better than moving: the framing stays put and
+     the shot simply becomes a higher vantage point. */
+  function liftUntilVisible(cam, sh) {
+    const end = sh.speed * sh.d;
+    const climb = sh.climb || 0;
+    for (let step = 0; step < 40; step++) {
+      let ok = true;
+      for (let k = 0; k <= 6 && ok; k++) {
+        const u = k / 6;
+        _losA.copy(tPos).addScaledVector(_tf, end * u);
+        _losA.y = tPos.y + climb * sh.d * u;
+        // The dive ends in the ground; sighting its last moment is the point.
+        if (sh.dive) _losA.y = Math.max(_losA.y, heightAt(_losA.x, _losA.z) + 2);
+        if (!canSee(cam, _losA)) ok = false;
+      }
+      if (ok) return;
+      cam.y += 9;
+    }
   }
 
   // The game's own COCKPIT and WING entries, rather than a second copy of the
@@ -2267,6 +2313,7 @@ canvas { display: block; }
   const INTRO_IN = 5.0;                     // seconds of fly-in
   let introTime = 0;
   let introDone = false;      // the fly-in has finished and the prompt is live
+  let introProp = 46;         // propeller rate, wound down once it has parked
   const WORLD_UP = new THREE.Vector3(0, 1, 0);
   const heroPos = new THREE.Vector3();
   const heroDir = new THREE.Vector3();
@@ -2379,7 +2426,13 @@ canvas { display: block; }
         .premultiply(_qb.setFromAxisAngle(heroFwd, Math.sin(s * 0.42) * 0.035));
     }
 
-    propGroup.rotation.z += dt * 46;
+    // The aeroplane has arrived and is sitting still, so the engine has no
+    // business turning over. Wound down rather than cut, since a propeller
+    // stopping dead looks like a dropped frame.
+    if (raw < 1) introProp = 46;
+    else introProp *= Math.pow(0.12, dt);
+    propGroup.rotation.z += dt * introProp;
+
     camera.up.copy(WORLD_UP);
     camera.position.copy(introCamPos);
     camera.position.y += Math.sin(introTime * 0.24) * 1.9;
