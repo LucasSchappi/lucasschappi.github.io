@@ -1871,6 +1871,10 @@ canvas { display: block; }
   const boardEl = () => document.getElementById('board');
 
   if (CHALLENGE) {
+    // Otherwise the panel is still headed LOWEST CRASH while you fly something
+    // else entirely. It becomes ALL TIME once a real board arrives and the
+    // TODAY table appears above it.
+    document.getElementById('board-alltime-head').textContent = CHALLENGE.name;
     const b = document.getElementById('challenge-banner');
     document.getElementById('cb-name').textContent = 'CHALLENGE: ' + CHALLENGE.name;
     b.classList.remove('hidden');
@@ -1917,6 +1921,7 @@ canvas { display: block; }
 
   function drawBoard(data) {
     if (!data || !data.top) return;
+    document.querySelector('.board__name').style.display = '';
     if (data.today !== undefined) {
       document.getElementById('board-today-wrap').classList.remove('hidden');
       fillList(document.getElementById('board-today'), data.today);
@@ -1978,6 +1983,7 @@ canvas { display: block; }
         if (!data || !data.top) {
           document.getElementById('board-list').innerHTML = '';
           document.getElementById('board-me').textContent = 'Leaderboard not set up yet';
+          document.querySelector('.board__name').style.display = 'none';
           return;
         }
         drawBoard(data);
