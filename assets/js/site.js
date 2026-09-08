@@ -301,9 +301,20 @@
       replaced = true;
       var wrap = mk("div", "featured__note");
       wrap.appendChild(mk("h2", null, "No votes yet this week"));
-      wrap.appendChild(mk("p", null,
-        "Nobody has voted since the poll reset on Monday. Pick one above and "
-        + "it will show up here."));
+      var line = mk("p", null,
+        "Nobody has voted since the poll reset on Monday. ");
+      if (document.querySelector("[data-poll]")) {
+        line.appendChild(document.createTextNode(
+          "Pick one above and it will show up here."));
+      } else {
+        // The poll lives on the games page, so point at it rather than
+        // telling someone to look "above" at something that is not there.
+        var a = mk("a", null, "Vote on the games page");
+        a.href = "/games/#poll";
+        line.appendChild(a);
+        line.appendChild(document.createTextNode(" and it will show up here."));
+      }
+      wrap.appendChild(line);
       body.appendChild(wrap);
     };
 
@@ -359,13 +370,13 @@
      request fails, the section stays hidden and the page is simply without
      it. See docs/poll-setup.md for the backend this expects.
 
-     Switched off for now. The Apps Script endpoint still works; putting its
-     URL back between these quotes is all it takes to bring the poll back,
-     along with the favourite-game card that reads from it. */
-  var POLL_ENDPOINT = "";
+     The poll itself lives on the games page. The home page has no poll but
+     does have the favourite-game card, so the votes are fetched wherever
+     either of those two things is present. */
+  var POLL_ENDPOINT = "https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec";
 
   var poll = document.querySelector("[data-poll]");
-  if (poll && POLL_ENDPOINT) {
+  if (POLL_ENDPOINT && (poll || featured)) {
     var POLL_GAMES = [
       { id: "flight-sim", name: "Schappi’s Flight Simulator",
         href: "/games/flight-sim/" },
@@ -375,8 +386,9 @@
         href: "https://schappi-plays.itch.io/sheep-and-tree-world" }
     ];
 
-    var list = poll.querySelector("[data-poll-list]");
-    var status = poll.querySelector("[data-poll-status]");
+    // Null on a page that shows the result without offering the vote.
+    var list = poll ? poll.querySelector("[data-poll-list]") : null;
+    var status = poll ? poll.querySelector("[data-poll-status]") : null;
 
     /* ISO week, so the poll turns over on Monday the same way everywhere and
        the key is something a human can read in the database. */
@@ -442,6 +454,7 @@
     }
 
     function render(votes, voted) {
+      if (!list) return;
       var total = 0;
       POLL_GAMES.forEach(function (g) { total += votes[g.id] || 0; });
       list.innerHTML = "";
@@ -512,7 +525,8 @@
         if (data.week) week = data.week;
         render(data.votes || {}, myVote());
         highlightFavourite(data.votes || {});
-        poll.hidden = false;   // only now is there anything worth showing
+        // Only now is there anything worth showing.
+        if (poll) poll.hidden = false;
       })
       .catch(function () { /* leave the section hidden */ });
   }

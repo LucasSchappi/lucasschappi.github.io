@@ -46,19 +46,6 @@
     </div>
   </section>
 
-  <!-- Game of the week. Hidden until assets/js/site.js has an endpoint to talk
-       to and has actually reached it, so a missing or broken backend shows
-       nothing at all rather than an empty poll. See docs/poll-api.md. -->
-  <section class="section poll" id="poll" data-poll hidden>
-    <div class="wrap">
-      <p class="featured__eyebrow">Game of the week</p>
-      <h2 class="poll__head">Which one do you like most?</h2>
-      <p class="poll__sub">One vote each. Resets every Monday.</p>
-      <ul class="poll__list" data-poll-list></ul>
-      <p class="poll__status" data-poll-status role="status"></p>
-    </div>
-  </section>
-
   <!-- The game currently winning the poll above. Rendered here in full so it
        works with no JavaScript; assets/js/site.js swaps in the poll's leader
        once it knows one. Until a clear leader exists it stays a game of the

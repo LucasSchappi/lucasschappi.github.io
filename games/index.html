@@ -126,8 +126,23 @@
     </div>
   </section>
 
+  <!-- Game of the week. Sits here rather than on the home page: the people
+       who have just played something are the ones with an opinion. Hidden
+       until assets/js/site.js has an endpoint to talk to and has actually
+       reached it, so a missing or broken backend shows nothing at all rather
+       than an empty poll. See docs/poll-setup.md. -->
+  <section class="section poll" id="poll" data-poll hidden>
+    <div class="wrap">
+      <p class="featured__eyebrow">Game of the week</p>
+      <h2 class="poll__head">Which one do you like most?</h2>
+      <p class="poll__sub">One vote each. Resets every Monday.</p>
+      <ul class="poll__list" data-poll-list></ul>
+      <p class="poll__status" data-poll-status role="status"></p>
+    </div>
+  </section>
+
   <!-- Only games Schappi Studios actually made belong here. -->
-  <section class="section">
+  <section class="section section--alt">
     <div class="wrap">
       <div class="section-head">
         <h2>Made by Schappi Studios</h2>
@@ -186,7 +201,7 @@
     </div>
   </section>
 
-  <section class="section section--alt">
+  <section class="section">
     <div class="wrap">
       <div class="section-head">
         <h2>Software</h2>
