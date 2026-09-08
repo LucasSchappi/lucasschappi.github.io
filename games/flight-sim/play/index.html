@@ -1478,7 +1478,7 @@ canvas { display: block; }
       const pitchRad = Math.asin(Math.max(-1, Math.min(1, forward.y)));
       const bankRad = -Math.atan2(right.y, up.y);
       updateInstruments(airspeed, planeGroup.position.y * 3.28, heading, pitchRad, bankRad, vspeed, throttle);
-      stickPivot.rotation.x = pitchInput * -0.22;
+      stickPivot.rotation.x = pitchInput * 0.22;
       stickPivot.rotation.z = rollInput * -0.26;
       throttlePivot.rotation.x = 0.55 - throttle * 1.05;
     }
@@ -1570,15 +1570,23 @@ canvas { display: block; }
     planeGroup.visible = true;
     clearBlast();
 
-    // Each mount wants its own lens, and only the cockpit shot wants an
-    // interior drawn. Nothing else in the trailer calls setView.
+    // The lens comes from the same table as the framing, and only the cockpit
+    // shot wants an interior drawn. Nothing else in the trailer calls setView.
+    const mount = mountFor(sh.cam);
     cockpitGroup.visible = sh.cam === 'cockpit';
-    camera.fov = sh.cam === 'cockpit' ? 80 : sh.cam === 'wing' ? 62 : 70;
-    camera.near = sh.cam === 'cockpit' ? 0.18 : 0.5;
+    camera.fov = mount ? mount.fov : 70;
+    camera.near = mount ? mount.near : 0.5;
     camera.updateProjectionMatrix();
   }
 
-  const WING_SEAT = new THREE.Vector3(7.4, 1.5, 1.8);
+  // The game's own COCKPIT and WING entries, rather than a second copy of the
+  // numbers that would quietly go stale.
+  function mountFor(cam) {
+    if (cam === 'cockpit') return VIEWS[1];
+    if (cam === 'wing') return VIEWS[2];
+    return null;
+  }
+  const _tmount = new THREE.Vector3();
 
   function frameShot(sh, u) {
     _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
@@ -1586,12 +1594,18 @@ canvas { display: block; }
     const up = new THREE.Vector3(0, 1, 0);
 
     if (sh.cam === 'cockpit' || sh.cam === 'wing') {
-      // Bolted to the aeroplane: the camera banks with it, and the horizon
-      // tilts the way it does when you are the one flying.
-      const seat = sh.cam === 'cockpit' ? EYE : WING_SEAT;
-      camera.position.copy(planeGroup.position)
-        .add(_tv.copy(seat).applyQuaternion(planeGroup.quaternion));
-      camera.quaternion.copy(planeGroup.quaternion);
+      // Framed exactly as the game frames a mounted view, read from the same
+      // table the game uses, so the trailer cannot drift away from what
+      // anybody actually sees when they play. This matters most for the wing:
+      // its `ahead` is zero, which means it looks back at the aeroplane, not
+      // forward down the nose.
+      const v = mountFor(sh.cam);
+      const q = planeGroup.quaternion;
+      _tmount.copy(v.offset).applyQuaternion(q);
+      camera.position.copy(planeGroup.position).add(_tmount);
+      _tf.set(0, 0, -1).applyQuaternion(q);
+      camera.up.set(0, 1, 0).applyQuaternion(q);          // roll with the wing
+      camera.lookAt(_tv.copy(planeGroup.position).addScaledVector(_tf, v.ahead));
       return;
     }
 
@@ -1649,7 +1663,7 @@ canvas { display: block; }
         const hdg = ((-tHeading * 180 / Math.PI) % 360 + 360) % 360;
         updateInstruments(sh.speed * 1.94, tPos.y * 3.28, hdg,
           tPitch, sh.bank, (sh.climb || 0) * 196.85, throttle);
-        stickPivot.rotation.x = -tPitch * 0.9;
+        stickPivot.rotation.x = tPitch * 0.9;
         stickPivot.rotation.z = -sh.bank * 0.45;
         throttlePivot.rotation.x = 0.55 - throttle * 1.05;
       }
