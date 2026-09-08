@@ -319,6 +319,9 @@ canvas { display: block; }
     course: { name: 'CHECKPOINT RUN', board: 'chal-course', lower: true, unit: 's',
               blurb: 'Fly through every gate. Fastest time wins, and a crash ends the run.' }
   };
+  // ?trailer flies a scripted sequence of shots with nothing on screen, for
+  // recording. Nothing else in the game knows or cares that it exists.
+  const TRAILER = params.has('trailer');
   const chalId = params.get('challenge');
   // Bullseye is flown over an empty plain: no hills to hide behind, and
   // nothing to judge but where you come down.
@@ -1216,14 +1219,17 @@ canvas { display: block; }
     // Flaps indicator
     document.getElementById('flaps-indicator').style.display = flaps ? 'block' : 'none';
 
-    Sound.update(throttle, airspeed, playing && !crashed, stalling, elapsed);
+    // A silent trailer is a poor trailer: run the engine while it is flying,
+    // and let it stop when the aeroplane does.
+    Sound.update(throttle, airspeed,
+      TRAILER ? planeGroup.visible : (playing && !crashed), stalling, elapsed);
     if (!playing) updateChallengeHud();
 
     // The title screen is the fly-in and the title, and nothing else. The
     // crash card keeps its instruments, since the final readings are the
     // interesting part of a crash.
     const onTitle = !playing && !crashed;
-    document.getElementById('hud').classList.toggle('titlescreen', onTitle);
+    document.getElementById('hud').classList.toggle('titlescreen', onTitle || TRAILER);
     if (CHALLENGE) {
       document.getElementById('challenge-banner').classList.toggle('hidden', onTitle);
     }
@@ -1232,7 +1238,12 @@ canvas { display: block; }
     // the flight itself is over.
     updateBlast(dt);
 
-    if (!playing && !crashed) updateIntro(dt);
+    if (TRAILER) {
+      if (!shotDone) updateTrailer(dt);
+      else updateIntro(dt);                      // hold on the hero pose
+    } else if (!playing && !crashed) {
+      updateIntro(dt);
+    }
 
     // These follow the aeroplane and the camera, so they have to run during the
     // title sequence too - otherwise the shadows and the sky stay at the origin
@@ -1456,6 +1467,140 @@ canvas { display: block; }
       stickPivot.rotation.x = pitchInput * -0.22;
       stickPivot.rotation.z = rollInput * -0.26;
       throttlePivot.rotation.x = 0.55 - throttle * 1.05;
+    }
+  }
+
+  // ===== TRAILER =====
+  // A shot list, flown by the camera rather than by a pilot. Each shot sets a
+  // time of day, puts the aeroplane on a path and frames it a particular way.
+  // Positions are integrated frame by frame rather than solved, which keeps
+  // curved paths to two lines apiece.
+  const SHOTS = [
+    // t: time of day, d: seconds, cam: framing, and the aeroplane's path.
+    { t: 'DAWN',   d: 5.0, cam: 'hero',    intro: true },
+    { t: 'DAWN',   d: 4.5, cam: 'ground',  alt: 55,  speed: 92, turn: 0,      bank: 0.10, climb: 0 },
+    { t: 'MIDDAY', d: 4.5, cam: 'chase',   alt: 210, speed: 96, turn: 0.16,   bank: 0.62, climb: 2 },
+    { t: 'MIDDAY', d: 3.5, cam: 'wing',    alt: 240, speed: 96, turn: -0.12,  bank: -0.5, climb: -4 },
+    { t: 'DUSK',   d: 4.0, cam: 'cockpit', alt: 300, speed: 90, turn: 0.05,   bank: 0.18, climb: -6 },
+    { t: 'DUSK',   d: 4.5, cam: 'orbit',   alt: 260, speed: 88, turn: 0,      bank: 0.05, climb: 0 },
+    { t: 'NIGHT',  d: 3.5, cam: 'ground',  alt: 70,  speed: 98, turn: 0,      bank: 0.14, climb: 0 },
+    { t: 'DUSK',   d: 4.5, cam: 'ground',  alt: 180, speed: 110, turn: 0.03,  bank: 0.2,  climb: -46, dive: true },
+    { t: 'DAWN',   d: 5.0, cam: 'hero',    title: true }
+  ];
+
+  let shotIndex = -1, shotTime = 0, shotDone = false;
+  const tPos = new THREE.Vector3();
+  let tHeading = 0, tBank = 0, tPitch = 0;
+  const camAnchor = new THREE.Vector3();
+  const _te = new THREE.Euler(0, 0, 0, 'YXZ');
+  const _tv = new THREE.Vector3(), _tf = new THREE.Vector3(), _tr = new THREE.Vector3();
+
+  function beginShot(i) {
+    shotIndex = i;
+    shotTime = 0;
+    const sh = SHOTS[i];
+    applyTime(TIMES.findIndex(x => x.name === sh.t), false);
+
+    if (sh.intro || sh.title) {
+      introTime = sh.title ? INTRO_IN : 0;      // the title shot opens parked
+      if (sh.title) {
+        const ov = document.getElementById('overlay');
+        ov.classList.remove('hidden');
+        ov.classList.add('instant');
+        document.getElementById('step-title').classList.add('ready');
+        document.getElementById('step-controls').classList.add('hidden');
+        document.querySelector('#step-title .prompt').style.display = 'none';
+      }
+      planeGroup.visible = true;
+      clearBlast();
+      return;
+    }
+
+    // Start each flying shot near the hero spot, on a fresh heading, so the
+    // sequence stays over the good-looking part of the world.
+    tHeading = (i * 1.9) % (Math.PI * 2);
+    tPitch = 0;
+    tBank = sh.bank;
+    _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
+    tPos.copy(heroPos).addScaledVector(_tf, -sh.speed * sh.d * 0.5);
+    tPos.y = Math.max(heightAt(tPos.x, tPos.z) + sh.alt, sh.alt);
+
+    if (sh.cam === 'ground') {
+      // Park the camera off to one side of the path, at head height, and let
+      // the aeroplane come to it.
+      _tr.set(_tf.z, 0, -_tf.x);                 // right of the flight path
+      camAnchor.copy(heroPos).addScaledVector(_tr, sh.dive ? 150 : 95);
+      camAnchor.y = heightAt(camAnchor.x, camAnchor.z) + (sh.dive ? 30 : 14);
+    }
+    planeGroup.visible = true;
+    clearBlast();
+  }
+
+  function frameShot(sh, u) {
+    _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
+    _tr.set(_tf.z, 0, -_tf.x);
+    const up = new THREE.Vector3(0, 1, 0);
+
+    if (sh.cam === 'chase') {
+      camera.position.copy(tPos).addScaledVector(_tf, -34).addScaledVector(_tr, 9);
+      camera.position.y += 9;
+      camera.lookAt(_tv.copy(tPos).addScaledVector(_tf, 24));
+    } else if (sh.cam === 'wing') {
+      camera.position.copy(tPos).addScaledVector(_tr, 8.2);
+      camera.position.y += 1.6;
+      camera.lookAt(_tv.copy(tPos).addScaledVector(_tf, 40).addScaledVector(_tr, -4));
+    } else if (sh.cam === 'cockpit') {
+      camera.position.copy(tPos).addScaledVector(_tf, -1.0);
+      camera.position.y += 0.5;
+      camera.lookAt(_tv.copy(tPos).addScaledVector(_tf, 300));
+    } else if (sh.cam === 'orbit') {
+      const a = u * Math.PI * 1.15;
+      camera.position.set(
+        tPos.x + Math.sin(a) * 46, tPos.y + 11 + Math.sin(a * 1.7) * 5,
+        tPos.z + Math.cos(a) * 46);
+      camera.lookAt(tPos);
+    } else {                                     // ground: a fixed camera
+      camera.position.copy(camAnchor);
+      camera.lookAt(tPos);
+    }
+    camera.up.copy(up);
+  }
+
+  function updateTrailer(dt) {
+    if (shotIndex < 0) beginShot(0);
+    const sh = SHOTS[shotIndex];
+    shotTime += dt;
+
+    if (sh.intro || sh.title) {
+      updateIntro(dt);                           // the fly-in and the hero pose
+    } else {
+      throttle = 0.78;
+      airspeed = sh.speed;
+      tHeading += (sh.turn || 0) * dt;
+      _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
+      tPos.addScaledVector(_tf, sh.speed * dt);
+      tPos.y += (sh.climb || 0) * dt;
+      tPitch = Math.atan2(sh.climb || 0, sh.speed);
+
+      const ground = heightAt(tPos.x, tPos.z);
+      if (sh.dive && tPos.y < ground + 3) {
+        // The money shot: put it into the hill and let the explosion run.
+        if (planeGroup.visible) {
+          Sound.crash();
+          startBlast(tPos.clone(), _tv.copy(_tf).multiplyScalar(sh.speed));
+        }
+      } else {
+        planeGroup.position.copy(tPos);
+        _te.set(tPitch, tHeading, sh.bank, 'YXZ');
+        planeGroup.quaternion.setFromEuler(_te);
+        propGroup.rotation.z += dt * 52;
+      }
+      frameShot(sh, Math.min(1, shotTime / sh.d));
+    }
+
+    if (shotTime >= sh.d) {
+      if (shotIndex + 1 < SHOTS.length) beginShot(shotIndex + 1);
+      else shotDone = true;                      // hold on the title
     }
   }
 
@@ -1886,6 +2031,13 @@ canvas { display: block; }
   }
 
   const boardEl = () => document.getElementById('board');
+
+  if (TRAILER) {
+    // Nothing but the picture until the last shot, which is the title card.
+    document.getElementById('overlay').classList.add('hidden', 'instant');
+    document.getElementById('seed-line').style.display = 'none';
+    document.getElementById('challenge-banner').classList.add('hidden');
+  }
 
   if (CHALLENGE) {
     // Otherwise the panel is still headed LOWEST CRASH while you fly something
@@ -2397,6 +2549,7 @@ canvas { display: block; }
   let stage = 0;
   function advance() {
     Sound.init();       // still worth doing: a key press is what unlocks audio
+    if (TRAILER) return;
     if (crashed || playing) { startFlight(); return; }
     if (stage === 0) {
       // The aeroplane is still flying in. Let it arrive before moving on,
