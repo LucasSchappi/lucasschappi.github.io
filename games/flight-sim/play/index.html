@@ -875,6 +875,23 @@ canvas { display: block; }
   propGroup.add(spinner);
   planeGroup.add(propGroup);
 
+  /* Two blades crossed at right angles, so the propeller looks identical every
+     quarter turn. Turn it more than half of that between two frames and the
+     eye reconstructs the wrong motion: slower, stopped, or backwards. That is
+     the wagon-wheel effect, and it is why it looked wrong at high throttle and
+     different on different machines.
+
+     The cap is per frame rather than per second, which is the whole point: a
+     display running at 120 Hz genuinely can show a faster propeller, and a
+     machine struggling at 30 gets a slower one rather than a broken one. */
+  const PROP_SYMMETRY = Math.PI / 2;
+  const PROP_MAX_STEP = PROP_SYMMETRY * 0.42;
+  const PROP_RATE = 38;                  // rad/s at full throttle, chosen to sit
+                                         // just under the cap at 60 frames a second
+  function spinProp(rate, dt) {
+    propGroup.rotation.z += Math.min(rate * dt, PROP_MAX_STEP);
+  }
+
   // Landing gear
   const gearMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.5, roughness: 0.4 });
   const lgL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.5, 4), gearMat);
@@ -1436,7 +1453,7 @@ canvas { display: block; }
     }
 
     // Propeller spin
-    propGroup.rotation.z += throttle * 80 * dt;
+    spinProp(throttle * PROP_RATE, dt);
 
     // Exhaust trail
     if (throttle > 0.2) {
@@ -1544,7 +1561,7 @@ canvas { display: block; }
 
     if (sh.intro || sh.title) {
       introTime = 0;      // both hero shots fly the approach in from the start
-      introProp = 46;
+      introProp = PROP_RATE;
       if (sh.title) {
         const ov = document.getElementById('overlay');
         ov.classList.remove('hidden');
@@ -1704,7 +1721,7 @@ canvas { display: block; }
         planeGroup.position.copy(tPos);
         _te.set(tPitch, tHeading, sh.bank, 'YXZ');
         planeGroup.quaternion.setFromEuler(_te);
-        propGroup.rotation.z += dt * 52;
+        spinProp(PROP_RATE, dt);
       }
       // The instruments are normally driven from the flight loop, which does
       // not run here. Dead gauges would give the cockpit shot away instantly.
@@ -2397,7 +2414,7 @@ canvas { display: block; }
   const INTRO_IN = 5.0;                     // seconds of fly-in
   let introTime = 0;
   let introDone = false;      // the fly-in has finished and the prompt is live
-  let introProp = 46;         // propeller rate, wound down once it has parked
+  let introProp = 38;         // propeller rate, cut the moment it parks
   const WORLD_UP = new THREE.Vector3(0, 1, 0);
   const heroPos = new THREE.Vector3();
   const heroDir = new THREE.Vector3();
@@ -2512,8 +2529,8 @@ canvas { display: block; }
     // The aeroplane has arrived and is sitting still, so the engine has no
     // business turning over. Wound down rather than cut, since a propeller
     // stopping dead looks like a dropped frame.
-    introProp = raw < 1 ? 46 : 0;
-    propGroup.rotation.z += dt * introProp;
+    introProp = raw < 1 ? PROP_RATE : 0;
+    spinProp(introProp, dt);
 
     camera.up.copy(WORLD_UP);
     camera.position.copy(introCamPos);
