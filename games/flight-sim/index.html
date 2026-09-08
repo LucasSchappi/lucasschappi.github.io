@@ -276,7 +276,12 @@ canvas { display: block; }
     h += noise2D(x, z, 0.05, 4);
     h += noise2D(x, z, 0.12, 1.5);
     h += noise2D(x, z, 0.25, 0.5);
-    return Math.max(h, -3);
+    // Below the shoreline the sea floor keeps going instead of stopping flat.
+    // The raw noise reaches nearly -300 m, which would be a silly place to fly,
+    // so the depth is compressed: gentle shelving near the coast, and the real
+    // trenches rare and much shallower than the noise wanted them.
+    if (h < -3) h = -3 - Math.pow(-3 - h, 0.62) * 1.6;
+    return h;
   }
 
   // Fades a transient message in the middle of the screen.
@@ -314,6 +319,11 @@ canvas { display: block; }
     { name: 'DUSK',   dir: new THREE.Vector3(-0.88,  0.11,  0.42) },
     { name: 'NIGHT',  dir: new THREE.Vector3( 0.35, -0.28, -0.30) },
   ];
+  // Everything except night, for the time a flight opens in. Derived from the
+  // list by name rather than by index, so reordering TIMES cannot silently
+  // start putting people in the dark.
+  const DAYLIGHT = TIMES.map((t, i) => i).filter(i => TIMES[i].name !== 'NIGHT');
+
   const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
   // How much daylight there is, and how close the sun is to the horizon.
   const dayAmount = () => clamp01((SUN_DIR.y + 0.02) / 0.35);
@@ -492,7 +502,9 @@ canvas { display: block; }
     for (let i = 0; i < verts.length; i += 3) {
       const h = verts[i + 1];
       let r, g, b;
-      if (h < -1) { r = 0.10; g = 0.25; b = 0.45; }
+      if (h < -26) { r = 0.04; g = 0.10; b = 0.21; }
+      else if (h < -9) { r = 0.07; g = 0.17; b = 0.33; }
+      else if (h < -1) { r = 0.10; g = 0.25; b = 0.45; }
       else if (h < 3) { r = 0.76; g = 0.72; b = 0.55; }
       else if (h < 30) { r = 0.26; g = 0.50; b = 0.19; }
       else if (h < 60) { r = 0.20; g = 0.40; b = 0.14; }
@@ -1891,6 +1903,13 @@ canvas { display: block; }
     clearTimeout(crashCardTimer);
     clearBlast();
     playing = true; crashed = false;
+
+    // A different light every flight - dawn, midday or dusk, never night.
+    // An explicit ?time= in the URL still wins, so a fixed shot stays fixed.
+    if (!params.get('time')) {
+      applyTime(DAYLIGHT[Math.floor(Math.random() * DAYLIGHT.length)], false);
+    }
+
     throttle = 0.6; airspeed = START_SPEED;
     planeGroup.position.set(0, START_ALT, 0);
     // identity already has the nose down -Z, which is where the velocity below
@@ -1931,9 +1950,10 @@ canvas { display: block; }
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Starting state. Dawn by default: the low sun rakes across the hills and
+  // The title screen is always dawn: the low sun rakes across the hills and
   // throws long shadows, which flatters the terrain far more than noon does.
-  // ?time=night (or midday / dusk) opens straight into one of the others.
+  // Starting a flight then rolls a random daylight time, unless ?time= says
+  // otherwise. ?time=night (or dawn / midday / dusk) forces one and keeps it.
   const wanted = (params.get('time') || '').toUpperCase();
   const wantedIndex = TIMES.findIndex(t => t.name === wanted);
   applyTime(wantedIndex >= 0 ? wantedIndex : 0, false);
