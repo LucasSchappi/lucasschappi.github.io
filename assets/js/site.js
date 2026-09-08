@@ -364,6 +364,94 @@
   }
 
 
+  /* Leaderboard ----------------------------------------------------------
+     Shares the browser's hidden code with the game itself: both live on this
+     domain, so the game's localStorage is this page's localStorage. Posting
+     the code without a score asks for the board with your own row marked, and
+     creates nothing if you have never played. The section stays hidden until
+     the board actually answers. */
+  var BOARD_ENDPOINT = "https://script.google.com/macros/s/AKfycbyZ1VfCY22zZeka-TrLYE-5XkXlcH-v0-gjimJubDf-OC7ubkb3NOac-bPl4EgTKPgbSw/exec";
+
+  var board = document.querySelector("[data-board]");
+  if (board && BOARD_ENDPOINT) {
+    var boardName = board.getAttribute("data-board");
+    var rows = board.querySelector("[data-board-list]");
+    var bstatus = board.querySelector("[data-board-status]");
+    var namePanel = board.querySelector("[data-board-name]");
+    var nameInput = document.getElementById("board-pilot");
+    var nameSave = board.querySelector("[data-board-save]");
+
+    function stored(k) {
+      try { return localStorage.getItem(k) || ""; } catch (e) { return ""; }
+    }
+    var myCode = stored("fs-code");
+
+    function paint(data) {
+      if (!data || !data.top) return false;
+      rows.innerHTML = "";
+      data.top.forEach(function (r) {
+        var li = document.createElement("li");
+        if (r.mine) li.className = "board__row--mine";
+        var n = document.createElement("span");
+        n.className = "board__name";
+        n.textContent = r.name;                 // text, never markup
+        var v = document.createElement("span");
+        v.className = "board__score";
+        v.textContent = r.value + " ft";
+        li.appendChild(n); li.appendChild(v);
+        rows.appendChild(li);
+      });
+      if (!data.entries) {
+        bstatus.textContent = "Nobody has crashed yet. Be the first.";
+      } else if (data.rank) {
+        bstatus.textContent = "You are " + data.rank + " of " + data.entries + ".";
+      } else {
+        bstatus.textContent = data.entries + (data.entries === 1 ? " pilot" : " pilots") + " so far.";
+      }
+      // Only offer the name box to someone who has actually played.
+      if (myCode && data.rank) {
+        nameInput.value = stored("fs-name");
+        namePanel.hidden = false;
+      }
+      board.hidden = false;
+      return true;
+    }
+
+    function ask(name) {
+      var body = { action: "score", board: boardName, code: myCode };
+      if (name !== undefined) body.name = name;
+      else body.name = stored("fs-name");
+      return fetch(BOARD_ENDPOINT, {
+        method: "POST",
+        // text/plain keeps this a simple request, so no preflight is sent.
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); });
+    }
+
+    if (nameSave) {
+      nameSave.addEventListener("click", function () {
+        var n = nameInput.value.trim() || stored("fs-name");
+        nameInput.value = n;
+        try { localStorage.setItem("fs-name", n); } catch (e) {}
+        bstatus.textContent = "Saving\u2026";
+        ask(n).then(paint).catch(function () {
+          bstatus.textContent = "Could not save that just now.";
+        });
+      });
+    }
+
+    if (myCode) {
+      ask().then(paint).catch(function () { /* leave the section hidden */ });
+    } else {
+      // Never played here, so there is no code to send: just read the board.
+      fetch(BOARD_ENDPOINT + "?board=" + encodeURIComponent(boardName))
+        .then(function (r) { return r.json(); })
+        .then(paint)
+        .catch(function () { /* leave the section hidden */ });
+    }
+  }
+
   /* Game of the week poll ------------------------------------------------
      A static site cannot count votes on its own, so this talks to a small
      API. Set POLL_ENDPOINT to switch it on; while it is empty, or if the

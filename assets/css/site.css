@@ -324,6 +324,52 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
 .featured__note h2 { margin: 0 0 10px; }
 .featured__note p { margin: 0; color: var(--text-2); max-width: 46ch; }
 
+/* Leaderboard -------------------------------------------------------------- */
+.board-intro { margin: 0 0 20px; color: var(--text-2); max-width: 62ch; }
+.board {
+  list-style: none; margin: 0 0 14px; padding: 0;
+  counter-reset: rank; max-width: 480px;
+}
+.board li {
+  counter-increment: rank;
+  display: flex; align-items: baseline; gap: 14px;
+  padding: 10px 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--bg-2); margin-bottom: 8px;
+}
+.board li::before {
+  content: counter(rank); width: 22px; flex: none;
+  color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+.board .board__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .board__score { font-variant-numeric: tabular-nums; color: var(--text-2); }
+.board .board__row--mine { border-color: var(--accent); }
+.board .board__row--mine .board__name { font-weight: 600; }
+.board .board__row--mine .board__score { color: var(--text); }
+.board-status { margin: 0 0 22px; color: var(--text-2); font-size: 14px; }
+.board-name { max-width: 480px; }
+.board-name > label { display: block; font-size: 14px; margin-bottom: 8px; }
+.board-name__row { display: flex; gap: 8px; }
+.board-name__row input {
+  flex: 1; min-width: 0; font: inherit; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text);
+}
+.board-name__row input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.board-name__note { margin: 10px 0 0; font-size: 13px; color: var(--text-2); }
+
+/* Back link at the top of a single game's page. */
+.crumb { margin: 0 0 10px; font-size: 14px; }
+.crumb a { color: var(--text-2); text-decoration: none; }
+.crumb a:hover { color: var(--text); text-decoration: underline; }
+
+/* Prose and checklists on a game's page. */
+.prose { max-width: 68ch; }
+.prose p { margin: 0 0 14px; color: var(--text-2); }
+.tick-list { margin: 0; padding: 0; list-style: none; max-width: 68ch; }
+.tick-list li { margin: 0 0 12px; padding-left: 20px; position: relative; color: var(--text-2); }
+.tick-list li::before { content: "\2022"; position: absolute; left: 4px; color: var(--accent); }
+.tick-list strong { color: var(--text); }
+
 /* Game of the week poll ---------------------------------------------------- */
 .poll__head { margin: 0 0 6px; }
 .poll__sub { margin: 0 0 22px; color: var(--text-2); font-size: 14px; }

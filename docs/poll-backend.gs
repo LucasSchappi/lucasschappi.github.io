@@ -147,10 +147,16 @@ function submitScore(body) {
   var code = String(body.code || '');
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(code)) return json({ error: 'bad code' });
 
-  var value = Number(body.value);
-  if (!isFinite(value)) return json({ error: 'bad score' });
-  value = Math.round(value);
-  if (value < spec.min || value > spec.max) return json({ error: 'bad score' });
+  // A post with no score is a rename, or simply a page asking for the board
+  // with its own row marked. Neither should invent an entry.
+  var hasValue = body.value !== undefined && body.value !== null && body.value !== '';
+  var value = 0;
+  if (hasValue) {
+    value = Number(body.value);
+    if (!isFinite(value)) return json({ error: 'bad score' });
+    value = Math.round(value);
+    if (value < spec.min || value > spec.max) return json({ error: 'bad score' });
+  }
 
   var name = cleanName(body.name);
 
@@ -160,11 +166,11 @@ function submitScore(body) {
     var all = readBoard(body.board);
     var mine = all[code];
     if (!mine) {
+      if (!hasValue) return json(topOf(body.board, code));   // nothing to file
       all[code] = { n: name, v: value };
     } else {
       mine.n = name;                                     // a rename always sticks
-      var better = spec.lower ? value < mine.v : value > mine.v;
-      if (better) mine.v = value;
+      if (hasValue && (spec.lower ? value < mine.v : value > mine.v)) mine.v = value;
     }
     writeBoard(body.board, all);
     return json(topOf(body.board, code));
@@ -183,7 +189,7 @@ function cleanName(raw) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 16);
-  return n || 'Pilot';
+  return n || 'Unknown';
 }
 
 function readBoard(board) {
