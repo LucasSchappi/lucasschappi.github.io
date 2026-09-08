@@ -1268,7 +1268,16 @@ canvas { display: block; }
     planeGroup.quaternion.normalize();
 
     const thrust = forward.clone().multiplyScalar(thrustForce * dt);
-    const dragCoeff = flaps ? 0.006 : 0.003;
+    // A gliding aeroplane is a far cleaner one than a powered aeroplane with a
+    // windmilling propeller, and the powered figure here is tuned against 120
+    // units of thrust. Left as it was, dead stick could not hold flying speed
+    // at any attitude at all: a level glide stalled in three seconds and even
+    // a vertical dive topped out barely above the stall. Gliding gets a fifth
+    // of the drag, which flies about seventy seconds down from the start
+    // height, or longer if you are willing to sit near the stall.
+    const dragCoeff = CHALLENGE === CHALLENGES.glide
+      ? (flaps ? 0.0012 : 0.0006)
+      : (flaps ? 0.006 : 0.003);
     const drag = velocity.clone().multiplyScalar(-dragCoeff * airspeed * dt);
     const liftCoeff = flaps ? 0.045 : 0.035;
     let liftMag = liftCoeff * airspeed * controlAuthority;
