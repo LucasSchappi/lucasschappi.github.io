@@ -1498,19 +1498,22 @@ canvas { display: block; }
   const SHOTS = [
     // t: time of day, d: seconds, cam: framing, then the aeroplane's path:
     // alt above ground, speed m/s, turn rad/s, bank rad, climb m/s.
-    { t: 'DAWN',   d: 4.0, cam: 'hero',    intro: true },
-    { t: 'DAWN',   d: 4.0, cam: 'ground',  alt: 55,  speed: 92,  turn: 0,     bank: 0.10, climb: 0 },
-    // Low over the water with the instruments live: this is what playing it
-    // actually looks like, which is the point of a trailer.
-    { t: 'DAWN',   d: 5.0, cam: 'cockpit', alt: 60,  speed: 95,  turn: 0.10,  bank: 0.42, climb: 0 },
+    // rate slows the approach without shortening it, so the opening can run
+    // longer and still cut away while the aeroplane is moving.
+    { t: 'DAWN',   d: 5.5, cam: 'hero',    intro: true, rate: 0.75 },
+    // From here it is mostly flown from the aeroplane, because that is what
+    // playing it looks like. The one outside shot left is the crash, which
+    // there is no way to watch from inside.
+    { t: 'DAWN',   d: 4.5, cam: 'cockpit', alt: 60,  speed: 95,  turn: 0.10,  bank: 0.42, climb: 0 },
     { t: 'MIDDAY', d: 4.0, cam: 'chase',   alt: 150, speed: 96,  turn: 0.18,  bank: 0.66, climb: 3 },
-    { t: 'MIDDAY', d: 4.0, cam: 'wing',    alt: 90,  speed: 98,  turn: -0.16, bank: -0.6, climb: 0 },
+    { t: 'MIDDAY', d: 3.5, cam: 'wing',    alt: 90,  speed: 98,  turn: -0.16, bank: -0.6, climb: 0 },
     { t: 'MIDDAY', d: 4.0, cam: 'cockpit', alt: 70,  speed: 94,  turn: -0.05, bank: -0.2, climb: 14 },
-    { t: 'DUSK',   d: 4.0, cam: 'orbit',   alt: 240, speed: 88,  turn: 0,     bank: 0.05, climb: 0 },
+    { t: 'DUSK',   d: 3.5, cam: 'chase',   alt: 110, speed: 99,  turn: -0.20, bank: -0.7, climb: -4 },
     { t: 'DUSK',   d: 3.5, cam: 'wing',    alt: 130, speed: 92,  turn: 0.14,  bank: 0.55, climb: -6 },
-    { t: 'NIGHT',  d: 3.5, cam: 'ground',  alt: 70,  speed: 98,  turn: 0,     bank: 0.14, climb: 0 },
+    { t: 'DUSK',   d: 3.0, cam: 'orbit',   alt: 240, speed: 88,  turn: 0,     bank: 0.05, climb: 0 },
+    { t: 'NIGHT',  d: 3.5, cam: 'cockpit', alt: 120, speed: 96,  turn: 0.08,  bank: 0.3,  climb: 0 },
     { t: 'DUSK',   d: 4.5, cam: 'ground',  alt: 180, speed: 110, turn: 0.03,  bank: 0.2,  climb: -46, dive: true },
-    { t: 'DAWN',   d: 7.5, cam: 'hero',    title: true }
+    { t: 'DAWN',   d: 7.0, cam: 'hero',    title: true }
   ];
 
   let shotIndex = -1, shotTime = 0, shotDone = false;
@@ -1680,7 +1683,7 @@ canvas { display: block; }
     showTimecode();
 
     if (sh.intro || sh.title) {
-      updateIntro(dt);                           // the fly-in and the hero pose
+      updateIntro(dt * (sh.rate || 1));          // the fly-in and the hero pose
     } else {
       throttle = 0.78;
       airspeed = sh.speed;
@@ -2419,18 +2422,16 @@ canvas { display: block; }
         introDone = true;
         document.getElementById('step-title').classList.add('ready');
       }
-      // Parked in the pose, breathing a little so it is not a still frame.
-      const s = introTime - INTRO_IN;
-      planeGroup.position.y += Math.sin(s * 0.55) * 1.7;
-      planeGroup.quaternion.copy(heroQuat)
-        .premultiply(_qb.setFromAxisAngle(heroFwd, Math.sin(s * 0.42) * 0.035));
+      // Parked, and holding still: it used to bob and roll gently, which
+      // looks wrong on an aeroplane whose propeller has stopped. The slow
+      // camera drift below is what keeps it from being a still frame.
+      planeGroup.quaternion.copy(heroQuat);
     }
 
     // The aeroplane has arrived and is sitting still, so the engine has no
     // business turning over. Wound down rather than cut, since a propeller
     // stopping dead looks like a dropped frame.
-    if (raw < 1) introProp = 46;
-    else introProp *= Math.pow(0.12, dt);
+    introProp = raw < 1 ? 46 : 0;
     propGroup.rotation.z += dt * introProp;
 
     camera.up.copy(WORLD_UP);
