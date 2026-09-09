@@ -3099,8 +3099,9 @@ canvas { display: block; }
     // sitting near the top of the frame; aiming at the aeroplane centres it.
     { name: 'DISTANT', fov: 70, offset: new THREE.Vector3(0, 3.2, 30), ahead: 0, rigid: false,
       zoomable: true, near: 0.5 },
-    { name: 'COCKPIT', fov: 80, offset: EYE,                            ahead: 300, rigid: true,  near: 0.18 },
-    { name: 'WING',    fov: 62, offset: new THREE.Vector3(7.4, 1.5, 1.8), ahead: 0, rigid: true,  near: 0.5 },
+    { name: 'COCKPIT', fov: 80, offset: EYE, ahead: 300, rigid: true, rollWith: true, near: 0.18 },
+    { name: 'WING',    fov: 62, offset: new THREE.Vector3(7.4, 1.5, 1.8), ahead: 0, rigid: true,
+      rollWith: true, near: 0.5 },
     // Just above and behind the tail, looking out past the nose. Rigid, so it
     // rolls with the aeroplane rather than swimming behind it.
     { name: 'TAIL',    fov: 66, offset: new THREE.Vector3(0, 3.2, 13.5), ahead: 60, rigid: true, near: 0.5 },
@@ -3122,26 +3123,41 @@ canvas { display: block; }
      level and the aeroplane banks within the shot instead of the world
      rolling. `rigid` mounts the camera on the airframe, where it should roll
      with it. */
-  const _mf = new THREE.Vector3(), _mr = new THREE.Vector3(), _mo = new THREE.Vector3();
+  const _mf = new THREE.Vector3(), _mr = new THREE.Vector3();
+  const _mu = new THREE.Vector3(), _mo = new THREE.Vector3();
   const UP_Y = new THREE.Vector3(0, 1, 0);
   function viewPlacement(view, pos, quat, zoom, out) {
     const k = view.zoomable ? zoom : 1;
     _mo.copy(view.offset).multiplyScalar(k);
     _mf.set(0, 0, -1).applyQuaternion(quat);
     if (view.level) {
+      // Heading only: no pitch either, so the horizon never tips at all.
       _mf.y = 0;
       if (_mf.lengthSq() < 1e-6) _mf.set(0, 0, -1);
       _mf.normalize();
     }
-    if (view.level) {
-      _mr.crossVectors(_mf, UP_Y).normalize();
-      out.pos.copy(pos).addScaledVector(_mr, _mo.x).addScaledVector(_mf, -_mo.z);
-      out.pos.y += _mo.y;
-    } else {
+
+    if (view.rollWith) {
+      // Bolted to the airframe. Inside the cockpit or out on the wing you
+      // turn with the aeroplane, so the world is what rolls.
       out.pos.copy(pos).add(_mo.applyQuaternion(quat));
+      out.up.copy(UP_Y).applyQuaternion(quat);
+    } else {
+      /* A frame built from the aeroplane's heading and pitch but not its
+         roll: taking the sideways axis from the world's up throws the roll
+         away. The camera keeps the horizon level and the aeroplane banks
+         within the shot, which is the right way round for a camera watching
+         it rather than riding in it. */
+      _mr.crossVectors(_mf, UP_Y);
+      if (_mr.lengthSq() < 1e-6) _mr.set(1, 0, 0);       // pointing straight up or down
+      _mr.normalize();
+      _mu.crossVectors(_mr, _mf).normalize();
+      out.pos.copy(pos)
+        .addScaledVector(_mr, _mo.x)
+        .addScaledVector(_mu, _mo.y)
+        .addScaledVector(_mf, -_mo.z);
+      out.up.copy(_mu);
     }
-    if (view.rigid) out.up.copy(UP_Y).applyQuaternion(quat);
-    else out.up.copy(UP_Y);
     out.look.copy(pos).addScaledVector(_mf, view.ahead * k);
     return out;
   }
