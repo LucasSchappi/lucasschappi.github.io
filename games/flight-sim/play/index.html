@@ -2306,14 +2306,6 @@ canvas { display: block; }
   shock.visible = false;
   blastGroup.add(shock);
 
-  // Burnt ground, which stays for the rest of the flight.
-  const scorchMat = new THREE.MeshBasicMaterial({
-    color: 0x120d08, transparent: true, opacity: 0.85, depthWrite: false
-  });
-  const scorch = new THREE.Mesh(new THREE.CircleGeometry(11, 32), scorchMat);
-  scorch.rotation.x = -Math.PI / 2;
-  scorch.visible = false;
-  blastGroup.add(scorch);
 
   // One light does more for the look of an explosion than any amount of
   // geometry: for a moment the hillside is lit from the fireball, not the sun.
@@ -2337,9 +2329,6 @@ canvas { display: block; }
     shock.scale.setScalar(1);
     shock.visible = true;
     shockMat.opacity = 0;
-
-    scorch.position.set(at.x, ground + 0.35, at.z);
-    scorch.visible = true;
 
     // Fire: a fast core, then slower flames rolling upward behind it.
     fire.forEach(function (p, i) {
@@ -2433,7 +2422,6 @@ canvas { display: block; }
     debris.forEach(function (d) { d.m.visible = false; });
     sparks.visible = false;
     shock.visible = false;
-    scorch.visible = false;
     blastLight.intensity = 0;
     planeGroup.visible = true;
   }
