@@ -1577,9 +1577,13 @@ canvas { display: block; }
 
     const controlAuthority = Math.min(airspeed / 80, 1);
     let pitchInput = 0, rollInput = 0, yawInput = 0;
-    // Inverted, the way a stick works: W pushes the nose down, S pulls it up.
-    if (keys['KeyW']) pitchInput = -1;
-    if (keys['KeyS']) pitchInput = 1;
+    /* W pushes the nose down, S pulls it up, the way a stick works. Measured
+       in the running game rather than reasoned about: positive input is nose
+       down here. The controls card used to say "pitch up / down", which was
+       simply wrong about which key did what, and inverting the keys to match
+       a wrong label made W climb. */
+    if (keys['KeyW']) pitchInput = 1;
+    if (keys['KeyS']) pitchInput = -1;
     if (keys['KeyA']) rollInput = -1;
     if (keys['KeyD']) rollInput = 1;
     if (keys['KeyQ']) yawInput = -1;
@@ -1805,7 +1809,7 @@ canvas { display: block; }
       const pitchRad = Math.asin(Math.max(-1, Math.min(1, forward.y)));
       const bankRad = -Math.atan2(right.y, up.y);
       updateInstruments(airspeed, planeGroup.position.y * 3.28, heading, pitchRad, bankRad, vspeed, throttle);
-      stickPivot.rotation.x = pitchInput * 0.22;
+      stickPivot.rotation.x = pitchInput * -0.22;
       stickPivot.rotation.z = rollInput * -0.26;
       throttlePivot.rotation.x = 0.55 - throttle * 1.05;
     }
