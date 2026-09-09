@@ -840,13 +840,9 @@ canvas { display: block; }
   roofOut.rotation.x = -0.03;
   canopy.add(roofOut);
 
-  // Turtledeck: the fairing that takes the cabin roof down onto the tail.
-  const turtle = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.46, 1.5, 10, 1, false,
-    0, Math.PI), cabinMat);
-  turtle.rotation.x = Math.PI / 2;
-  turtle.rotation.z = Math.PI;
-  turtle.position.set(0, 0.42, 0.44);
-  canopy.add(turtle);
+  // A turtledeck fairing used to sit here. It was half a cylinder, so it was
+  // open down one side and only existed when seen from the other. The tail
+  // boom already runs the length of it, so nothing is missing without it.
 
   planeGroup.add(canopy);
 
@@ -876,6 +872,19 @@ canvas { display: block; }
       pos.setY(i, pos.getY(i) * (1 - f * 0.42));                // thins outboard
       pos.setX(i, pos.getX(i) * side);
     }
+    if (side < 0) {
+      // Negating x mirrors the shape, which reverses the winding of every
+      // triangle: the outside of the left wing became its inside and was
+      // culled, so that wing appeared to have no top surface. Swapping two
+      // indices per triangle turns it right side out again.
+      const idx = g.index;
+      for (let i = 0; i < idx.count; i += 3) {
+        const a = idx.getX(i);
+        idx.setX(i, idx.getX(i + 2));
+        idx.setX(i + 2, a);
+      }
+      idx.needsUpdate = true;
+    }
     g.computeVertexNormals();
     return g;
   }
@@ -896,14 +905,18 @@ canvas { display: block; }
     panel.add(new THREE.Mesh(wingGeo(SPAN, ROOT_CHORD, TIP_CHORD, 0.17, side), wingMat));
 
     // Aileron outboard, flap inboard, both let into the trailing edge.
+    /* Hinged surfaces stand a little proud of the wing skin and overhang the
+       trailing edge. Sitting them flush inside the wing put two surfaces in
+       the same plane, and the two took turns being in front as the camera
+       moved: the flicker along the wing. */
     const ail = trailingEdge(0.74);
-    const aileron = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.11, 0.36), aileronMat2);
-    aileron.position.set(side * 4.77, 0, ail.z - 0.17);
+    const aileron = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.145, 0.34), aileronMat2);
+    aileron.position.set(side * 4.77, 0, ail.z - 0.11);
     panel.add(aileron);
 
     const flp = trailingEdge(0.32);
-    const flap = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.12, 0.42), aileronMat2);
-    flap.position.set(side * 2.06, 0, flp.z - 0.20);
+    const flap = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.175, 0.40), aileronMat2);
+    flap.position.set(side * 2.06, 0, flp.z - 0.14);
     panel.add(flap);
 
     panel.rotation.z = side * 0.055;            // dihedral
@@ -929,10 +942,14 @@ canvas { display: block; }
   // Nav light point lights. Kept dim and short-range on purpose: at dusk the
   // old intensity of 2 over 15 metres reached the whole airframe and painted
   // the fuselage red and green. Real ones glow, they do not floodlight.
-  const navLightL = new THREE.PointLight(0xff0000, 0.55, 5);
+  /* These are marker lights: they should be visible as points, not floodlight
+     the aeroplane they are bolted to. At the old range the green one was
+     washing the whole right wing, and the strobe was lighting the entire
+     airframe on every blink, which read as the aeroplane flashing on and off. */
+  const navLightL = new THREE.PointLight(0xff0000, 0.30, 0.9);
   navLightL.position.set(-6.42, 0.30, 0.42);
   planeGroup.add(navLightL);
-  const navLightR = new THREE.PointLight(0x00ff00, 0.55, 5);
+  const navLightR = new THREE.PointLight(0x00ff00, 0.30, 0.9);
   navLightR.position.set(6.42, 0.30, 0.42);
   planeGroup.add(navLightR);
 
@@ -941,9 +958,11 @@ canvas { display: block; }
   const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), strobeMat);
   strobe.position.set(0, 0.5, 3.2);
   planeGroup.add(strobe);
-  const strobeLight = new THREE.PointLight(0xffffff, 1.2, 10);
-  strobeLight.position.set(0, 0.5, 3.2);
-  planeGroup.add(strobeLight);
+  /* No light on the beacon. The bulb itself is emissive and blinks, which is
+     what a beacon looks like; a point light on top of it lit the fin and the
+     tailplane on every flash, so the whole aeroplane appeared to flash. The
+     tail is only a third of a metre away, so there is no range small enough
+     to light the bulb without lighting the tail with it. */
 
   // Horizontal stabilizer
   const hstab = new THREE.Group();
@@ -1453,7 +1472,7 @@ canvas { display: block; }
     // Strobe blink
     const strobeOn = Math.sin(elapsed * 8) > 0.8;
     strobe.material.emissiveIntensity = strobeOn ? 2 : 0;
-    strobeLight.intensity = strobeOn ? 2.2 : 0;
+
 
     // Flaps indicator
     document.getElementById('flaps-indicator').style.display = flaps ? 'block' : 'none';
@@ -1688,7 +1707,12 @@ canvas { display: block; }
     if (view.name === 'CHASE') rawOffset.multiplyScalar(chaseZoom);
     const camOffset = rawOffset.applyQuaternion(planeGroup.quaternion);
     const camTarget = planeGroup.position.clone().add(camOffset);
-    const rawLook = planeGroup.position.clone().add(forward.clone().multiplyScalar(view.ahead));
+    // The aim point scales with the camera, so zooming moves both along the
+    // same line through the aeroplane. Scaling only the camera swung the aim
+    // as it went, and the aeroplane slid across the frame instead of growing
+    // where it stood.
+    const lookDist = view.name === 'CHASE' ? view.ahead * chaseZoom : view.ahead;
+    const rawLook = planeGroup.position.clone().add(forward.clone().multiplyScalar(lookDist));
     if (view.rigid) {
       camera.position.copy(camTarget);
       smoothCamPos.copy(camTarget);
