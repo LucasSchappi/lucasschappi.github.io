@@ -1842,6 +1842,8 @@ canvas { display: block; }
   }
 
   const _nose = new THREE.Vector3();
+  const _te2 = new THREE.Euler(0, 0, 0, 'YXZ');
+  const _q0 = new THREE.Quaternion();
   function noseVec(heading, pitch, out) {
     const c = Math.cos(pitch);
     return out.set(-Math.sin(heading) * c, Math.sin(pitch), -Math.cos(heading) * c);
@@ -1893,6 +1895,18 @@ canvas { display: block; }
     }
     planeGroup.visible = true;
     clearBlast();
+
+    // Start the smoothing where this shot wants the camera, or it spends the
+    // first second flying in from wherever the previous shot left it.
+    const m0 = mountFor(sh.cam);
+    if (m0 && !m0.rigid) {
+      _te2.set(pitchAt(sh, 0), tHeading, bankAt(sh, 0), 'YXZ');
+      _q0.setFromEuler(_te2);
+      viewPlacement(m0, tPos, _q0, 1, _place);
+      smoothCamPos.copy(_place.pos);
+      smoothLookTarget.copy(_place.look);
+      camera.position.copy(_place.pos);
+    }
 
     // The lens comes from the same table as the framing, and only the cockpit
     // shot wants an interior drawn. Nothing else in the trailer calls setView.
@@ -1973,14 +1987,23 @@ canvas { display: block; }
 
     const named = mountFor(sh.cam);
     if (named) {
-      // Framed by the game's own view table, so a shot here and the view a
-      // player switches to are the same camera. This matters most for the
-      // wing, whose `ahead` is zero: it looks back at the aeroplane rather
-      // than forward down the nose.
       viewPlacement(named, planeGroup.position, planeGroup.quaternion, 1, _place);
-      camera.position.copy(_place.pos);
       camera.up.copy(_place.up);
-      camera.lookAt(_place.look);
+      if (named.rigid) {
+        camera.position.copy(_place.pos);
+        camera.lookAt(_place.look);
+      } else {
+        /* The chase views are double-smoothed in the game, and that lag is
+           most of how they look: a camera that trails a fast aeroplane ends up
+           far further back than its offset says, which is why the aeroplane is
+           small and distant there. Placing it exactly on the offset here made
+           the trailer look nothing like playing. Same two lerps, same
+           constants. */
+        smoothCamPos.lerp(_place.pos, 0.15);
+        camera.position.lerp(smoothCamPos, 0.25);
+        smoothLookTarget.lerp(_place.look, 0.15);
+        camera.lookAt(smoothLookTarget);
+      }
       return;
     }
 
