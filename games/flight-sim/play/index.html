@@ -1486,9 +1486,15 @@ canvas { display: block; }
     // The title screen is the fly-in and the title, and nothing else. The
     // crash card keeps its instruments, since the final readings are the
     // interesting part of a crash.
-    const onTitle = !playing && !crashed;
+    // The trailer is never "playing", so this was true throughout it and hid
+    // the instruments before the per-shot flag below could ask for them.
+    const onTitle = !playing && !crashed && !TRAILER;
+    // In the trailer the instruments are off except on the shots flown from
+    // behind, where they are what makes it look like somebody playing.
+    const trailerHud = TRAILER && !shotDone && shotIndex >= 0
+      && SHOTS[shotIndex] && SHOTS[shotIndex].hud;
     document.getElementById('hud').classList.toggle('titlescreen',
-      onTitle || TRAILER || replaying);
+      onTitle || replaying || (TRAILER && !trailerHud));
 
     // From inside, the aeroplane's own skin was filling the lower half of the
     // view: the eye sits above the fuselage surface, so you were looking at
@@ -1701,23 +1707,14 @@ canvas { display: block; }
     // Camera. Chase is double-smoothed for a cinematic lag; the two mounted
     // views are rigid, because a cockpit that lags is a cockpit that swims.
     const view = VIEWS[viewIndex];
-    const rawOffset = view.offset.clone();
-    // Chase pulls in and out on the wheel. The mounted views are bolted to the
-    // aeroplane, so there is nothing to zoom.
-    if (view.name === 'CHASE') rawOffset.multiplyScalar(chaseZoom);
-    const camOffset = rawOffset.applyQuaternion(planeGroup.quaternion);
-    const camTarget = planeGroup.position.clone().add(camOffset);
-    // The aim point scales with the camera, so zooming moves both along the
-    // same line through the aeroplane. Scaling only the camera swung the aim
-    // as it went, and the aeroplane slid across the frame instead of growing
-    // where it stood.
-    const lookDist = view.name === 'CHASE' ? view.ahead * chaseZoom : view.ahead;
-    const rawLook = planeGroup.position.clone().add(forward.clone().multiplyScalar(lookDist));
+    viewPlacement(view, planeGroup.position, planeGroup.quaternion, chaseZoom, _place);
+    const camTarget = _place.pos.clone();
+    const rawLook = _place.look.clone();
+    camera.up.copy(_place.up);
     if (view.rigid) {
       camera.position.copy(camTarget);
       smoothCamPos.copy(camTarget);
       smoothLookTarget.copy(rawLook);
-      camera.up.copy(up);          // roll with the aircraft
       camera.lookAt(rawLook);
     } else {
       camera.up.set(0, 1, 0);
@@ -1766,14 +1763,15 @@ canvas { display: block; }
     // From here it is mostly flown from the aeroplane, because that is what
     // playing it looks like. The one outside shot left is the crash, which
     // there is no way to watch from inside.
-    { t: 'DAWN',   d: 4.5, cam: 'cockpit', alt: 60,  speed: 95,  turn: 0.10,  bank: 0.42, climb: 0 },
-    { t: 'MIDDAY', d: 4.0, cam: 'chase',   alt: 150, speed: 96,  turn: 0.18,  bank: 0.66, climb: 3 },
-    { t: 'MIDDAY', d: 3.5, cam: 'wing',    alt: 90,  speed: 98,  turn: -0.16, bank: -0.6, climb: 0 },
-    { t: 'MIDDAY', d: 4.0, cam: 'cockpit', alt: 70,  speed: 94,  turn: -0.05, bank: -0.2, climb: 14 },
-    { t: 'DUSK',   d: 3.5, cam: 'chase',   alt: 110, speed: 99,  turn: -0.20, bank: -0.7, climb: -4 },
-    { t: 'DUSK',   d: 3.5, cam: 'wing',    alt: 130, speed: 92,  turn: 0.14,  bank: 0.55, climb: -6 },
+    { t: 'DAWN',   d: 4.5, cam: 'cockpit', alt: 60,  speed: 95,  turn: 0.10,  bank: 0.42, climb: 0, hud: true },
+    { t: 'MIDDAY', d: 4.0, cam: 'chase',   alt: 150, speed: 96,  turn: 0.18,  bank: 0.66, climb: 3, hud: true },
+    { t: 'MIDDAY', d: 3.5, cam: 'distant', alt: 260, speed: 94,  turn: -0.10, bank: -0.4, climb: -8, hud: true },
+    { t: 'MIDDAY', d: 3.5, cam: 'wing',    alt: 90,  speed: 98,  turn: -0.16, bank: -0.6, climb: 0, hud: true },
+    { t: 'MIDDAY', d: 4.0, cam: 'cockpit', alt: 70,  speed: 94,  turn: -0.05, bank: -0.2, climb: 14, hud: true },
+    { t: 'DUSK',   d: 3.5, cam: 'chase',   alt: 110, speed: 99,  turn: -0.20, bank: -0.7, climb: -4, hud: true },
+    { t: 'DUSK',   d: 3.5, cam: 'wing',    alt: 130, speed: 92,  turn: 0.14,  bank: 0.55, climb: -6, hud: true },
     { t: 'DUSK',   d: 3.0, cam: 'orbit',   alt: 240, speed: 88,  turn: 0,     bank: 0.05, climb: 0 },
-    { t: 'NIGHT',  d: 3.5, cam: 'cockpit', alt: 120, speed: 96,  turn: 0.08,  bank: 0.3,  climb: 0 },
+    { t: 'NIGHT',  d: 3.5, cam: 'cockpit', alt: 120, speed: 96,  turn: 0.08,  bank: 0.3,  climb: 0, hud: true },
     // Runs in level, pulls all the way round as though somebody were holding
     // S, rolls out and puts it into the hillside.
     { t: 'DUSK',   d: 7.5, cam: 'ground',  alt: 150, speed: 108, turn: 0.02,  bank: 0.18, climb: 0,
@@ -1883,6 +1881,7 @@ canvas { display: block; }
     cockpitGroup.visible = sh.cam === 'cockpit';
     camera.fov = mount ? mount.fov : 70;
     camera.near = mount ? mount.near : 0.5;
+    if (mount) document.getElementById('v-view').textContent = mount.name;
     camera.updateProjectionMatrix();
   }
 
@@ -1939,11 +1938,10 @@ canvas { display: block; }
 
   // The game's own COCKPIT and WING entries, rather than a second copy of the
   // numbers that would quietly go stale.
+  const CAM_VIEW = { cockpit: 'COCKPIT', wing: 'WING', follow: 'TAIL',
+                     chase: 'CHASE', distant: 'DISTANT' };
   function mountFor(cam) {
-    if (cam === 'cockpit') return VIEWS[1];
-    if (cam === 'wing') return VIEWS[2];
-    if (cam === 'follow') return VIEWS[3];
-    return null;
+    return CAM_VIEW[cam] ? viewNamed(CAM_VIEW[cam]) : null;
   }
   const _tmount = new THREE.Vector3();
 
@@ -1952,27 +1950,20 @@ canvas { display: block; }
     _tr.set(_tf.z, 0, -_tf.x);
     const up = new THREE.Vector3(0, 1, 0);
 
-    if (sh.cam === 'cockpit' || sh.cam === 'wing' || sh.cam === 'follow') {
-      // Framed exactly as the game frames a mounted view, read from the same
-      // table the game uses, so the trailer cannot drift away from what
-      // anybody actually sees when they play. This matters most for the wing:
-      // its `ahead` is zero, which means it looks back at the aeroplane, not
-      // forward down the nose.
-      const v = mountFor(sh.cam);
-      const q = planeGroup.quaternion;
-      _tmount.copy(v.offset).applyQuaternion(q);
-      camera.position.copy(planeGroup.position).add(_tmount);
-      _tf.set(0, 0, -1).applyQuaternion(q);
-      camera.up.set(0, 1, 0).applyQuaternion(q);          // roll with the wing
-      camera.lookAt(_tv.copy(planeGroup.position).addScaledVector(_tf, v.ahead));
+    const named = mountFor(sh.cam);
+    if (named) {
+      // Framed by the game's own view table, so a shot here and the view a
+      // player switches to are the same camera. This matters most for the
+      // wing, whose `ahead` is zero: it looks back at the aeroplane rather
+      // than forward down the nose.
+      viewPlacement(named, planeGroup.position, planeGroup.quaternion, 1, _place);
+      camera.position.copy(_place.pos);
+      camera.up.copy(_place.up);
+      camera.lookAt(_place.look);
       return;
     }
 
-    if (sh.cam === 'chase') {
-      camera.position.copy(tPos).addScaledVector(_tf, -34).addScaledVector(_tr, 9);
-      camera.position.y += 9;
-      camera.lookAt(_tv.copy(tPos).addScaledVector(_tf, 24));
-    } else if (sh.cam === 'orbit') {
+    if (sh.cam === 'orbit') {
       const a = u * Math.PI * 1.15;
       camera.position.set(
         tPos.x + Math.sin(a) * 46, tPos.y + 11 + Math.sin(a * 1.7) * 5,
@@ -2039,6 +2030,16 @@ canvas { display: block; }
         throttlePivot.rotation.x = 0.55 - throttle * 1.05;
       }
 
+      if (sh.hud) {
+        const hdg = ((-tHeading * 180 / Math.PI) % 360 + 360) % 360;
+        document.getElementById('v-speed').textContent = Math.floor(sh.speed * 1.94);
+        document.getElementById('v-alt').textContent = Math.floor(tPos.y * 3.28);
+        document.getElementById('v-heading').textContent = Math.floor(hdg);
+        document.getElementById('v-pitch').textContent = (tPitch * 180 / Math.PI).toFixed(1);
+        document.getElementById('v-bank').textContent = (-tBank * 180 / Math.PI).toFixed(1);
+        document.getElementById('v-vspeed').textContent = Math.round((sh.climb || 0) * 196.85);
+      }
+
       frameShot(sh, Math.min(1, shotTime / sh.d));
     }
 
@@ -2075,7 +2076,7 @@ canvas { display: block; }
     repExtra[i * 2 + 1] = airspeed;
   }
 
-  const REP_CAMS = ['CHASE', 'TAIL', 'COCKPIT', 'WING', 'ORBIT', 'FREE'];
+  const REP_CAMS = ['CHASE', 'DISTANT', 'TAIL', 'COCKPIT', 'WING', 'ORBIT', 'FREE'];
   const REP_SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
 
   let replaying = false;
@@ -2192,11 +2193,12 @@ canvas { display: block; }
       camera.lookAt(_rp2.copy(repFree).add(look));
       camera.fov = 62; camera.near = 0.5;
       cockpitGroup.visible = false;
-    } else if (cam === 'COCKPIT' || cam === 'WING' || cam === 'TAIL') {
-      const v = cam === 'COCKPIT' ? VIEWS[1] : cam === 'WING' ? VIEWS[2] : VIEWS[3];
-      camera.position.copy(_rp).add(_rp2.copy(v.offset).applyQuaternion(_rq));
-      camera.up.set(0, 1, 0).applyQuaternion(_rq);
-      camera.lookAt(_rp2.copy(_rp).addScaledVector(_rdir, v.ahead));
+    } else if (cam !== 'ORBIT') {
+      const v = viewNamed(cam);
+      viewPlacement(v, _rp, _rq, chaseZoom, _place);
+      camera.position.copy(_place.pos);
+      camera.up.copy(_place.up);
+      camera.lookAt(_place.look);
       camera.fov = v.fov; camera.near = v.near;
       cockpitGroup.visible = cam === 'COCKPIT';
     } else if (cam === 'ORBIT') {
@@ -3033,7 +3035,15 @@ canvas { display: block; }
   // ahead is how far along the nose the camera looks. Chase keeps the original
   // negative value on purpose - that is what gives it its loose, trailing feel.
   const VIEWS = [
-    { name: 'CHASE',   fov: 70, offset: new THREE.Vector3(0, 6, 28),   ahead: -25, rigid: false, near: 0.5 },
+    // Over the shoulder, level with the horizon, looking out ahead of the
+    // aeroplane. This is the framing the trailer uses.
+    { name: 'CHASE',   fov: 70, offset: new THREE.Vector3(9, 9, 34), ahead: 24, rigid: false,
+      level: true, zoomable: true, near: 0.5 },
+    // Higher and further back. It used to aim twenty-five metres behind the
+    // aeroplane, which pointed the camera steeply down and left the aeroplane
+    // sitting near the top of the frame; aiming at the aeroplane centres it.
+    { name: 'DISTANT', fov: 70, offset: new THREE.Vector3(0, 7, 30), ahead: 0, rigid: false,
+      zoomable: true, near: 0.5 },
     { name: 'COCKPIT', fov: 80, offset: EYE,                            ahead: 300, rigid: true,  near: 0.18 },
     { name: 'WING',    fov: 62, offset: new THREE.Vector3(7.4, 1.5, 1.8), ahead: 0, rigid: true,  near: 0.5 },
     // Just above and behind the tail, looking out past the nose. Rigid, so it
@@ -3041,7 +3051,46 @@ canvas { display: block; }
     { name: 'TAIL',    fov: 66, offset: new THREE.Vector3(0, 3.2, 13.5), ahead: 60, rigid: true, near: 0.5 },
   ];
   let viewIndex = 0;
-  let chaseZoom = 1;                  // scroll wheel, chase view only
+  let chaseZoom = 1;                  // scroll wheel, the chase views only
+
+  function viewNamed(n) {
+    for (let i = 0; i < VIEWS.length; i++) if (VIEWS[i].name === n) return VIEWS[i];
+    return VIEWS[0];
+  }
+
+  /* Where a given view puts the camera. One function, used by the game, the
+     trailer and the replay, so a shot in the trailer and the view a player
+     switches to are the same camera rather than two sets of numbers that
+     drift apart.
+
+     `level` keeps the offset in a heading-only frame, so the horizon stays
+     level and the aeroplane banks within the shot instead of the world
+     rolling. `rigid` mounts the camera on the airframe, where it should roll
+     with it. */
+  const _mf = new THREE.Vector3(), _mr = new THREE.Vector3(), _mo = new THREE.Vector3();
+  const UP_Y = new THREE.Vector3(0, 1, 0);
+  function viewPlacement(view, pos, quat, zoom, out) {
+    const k = view.zoomable ? zoom : 1;
+    _mo.copy(view.offset).multiplyScalar(k);
+    _mf.set(0, 0, -1).applyQuaternion(quat);
+    if (view.level) {
+      _mf.y = 0;
+      if (_mf.lengthSq() < 1e-6) _mf.set(0, 0, -1);
+      _mf.normalize();
+    }
+    if (view.level) {
+      _mr.crossVectors(_mf, UP_Y).normalize();
+      out.pos.copy(pos).addScaledVector(_mr, _mo.x).addScaledVector(_mf, -_mo.z);
+      out.pos.y += _mo.y;
+    } else {
+      out.pos.copy(pos).add(_mo.applyQuaternion(quat));
+    }
+    if (view.rigid) out.up.copy(UP_Y).applyQuaternion(quat);
+    else out.up.copy(UP_Y);
+    out.look.copy(pos).addScaledVector(_mf, view.ahead * k);
+    return out;
+  }
+  const _place = { pos: new THREE.Vector3(), look: new THREE.Vector3(), up: new THREE.Vector3() };
   function setView(i, announce) {
     viewIndex = ((i % VIEWS.length) + VIEWS.length) % VIEWS.length;
     const v = VIEWS[viewIndex];
@@ -3394,7 +3443,7 @@ canvas { display: block; }
   // moves it the same proportion whether it is close in or far out.
   window.addEventListener('wheel', e => {
     if (replaying || TRAILER) return;
-    if (VIEWS[viewIndex].name !== 'CHASE') return;
+    if (!VIEWS[viewIndex].zoomable) return;
     e.preventDefault();
     chaseZoom = Math.min(3.4, Math.max(0.32, chaseZoom * Math.exp(e.deltaY * 0.0011)));
   }, { passive: false });
