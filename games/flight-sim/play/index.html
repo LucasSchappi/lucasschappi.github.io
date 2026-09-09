@@ -1132,12 +1132,14 @@ canvas { display: block; }
   cockpitGroup.add(glare);
 
   // Windscreen frame
-  cockpitGroup.add(strut(-0.305, 0.505, -1.700, -0.190, 0.880, -1.235, 0.013, frameMat));
-  cockpitGroup.add(strut( 0.305, 0.505, -1.700,  0.190, 0.880, -1.235, 0.013, frameMat));
-  cockpitGroup.add(strut( 0.000, 0.545, -1.760,  0.000, 0.905, -1.290, 0.010, frameMat));
-  cockpitGroup.add(strut(-0.190, 0.880, -1.235,  0.000, 0.905, -1.290, 0.011, frameMat));
-  cockpitGroup.add(strut( 0.190, 0.880, -1.235,  0.000, 0.905, -1.290, 0.011, frameMat));
-  cockpitGroup.add(strut(-0.190, 0.880, -1.235,  0.190, 0.880, -1.235, 0.010, frameMat));
+  // Windscreen posts. These used to be 26 mm cylinders passing 39 cm from the
+  // pilot's eye, which subtends nearly four degrees each: three scaffolding
+  // poles across the view. They are now thinner, further forward and pushed
+  // out to the edges of the glass, and the centre post is gone - most light
+  // aircraft do not have one, and it sat directly in the line of sight.
+  cockpitGroup.add(strut(-0.430, 0.470, -1.960, -0.330, 0.910, -1.520, 0.008, frameMat));
+  cockpitGroup.add(strut( 0.430, 0.470, -1.960,  0.330, 0.910, -1.520, 0.008, frameMat));
+  cockpitGroup.add(strut(-0.330, 0.910, -1.520,  0.330, 0.910, -1.520, 0.007, frameMat));
 
   // Cabin walls, floor and side rails - what makes it feel like a box you sit in
   const wallGeo = new THREE.PlaneGeometry(1.30, 0.62);
@@ -1156,12 +1158,39 @@ canvas { display: block; }
   deck.rotation.x = 0.045;
   cockpitGroup.add(deck);
 
+  // The aeroplane's own skin ahead of the windscreen. The exterior fuselage is
+  // hidden from in here, so without this you would see straight through to the
+  // world where the nose should be.
+  const cowlMat = new THREE.MeshStandardMaterial({ color: 0xdcdcdc, metalness: 0.45, roughness: 0.42 });
+  const cowl = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.42, 1.5, 16), cowlMat);
+  cowl.rotation.x = Math.PI / 2;
+  cowl.position.set(0, 0.03, -2.70);
+  cockpitGroup.add(cowl);
+
   // Control stick, moved by whatever you are pressing
+  /* The control column. It used to be a 26 mm post 30 cm tall, standing below
+     the panel and inside the fuselage skin, so it was never visible at all.
+     It is now a proper column with a shaped grip, set closer to the pilot and
+     tall enough to stand clear of the panel where it can be seen moving. */
+  const gripMat = new THREE.MeshStandardMaterial({ color: 0x101216, roughness: 0.55, metalness: 0.15 });
   const stickPivot = new THREE.Group();
-  stickPivot.position.set(0, 0.02, -1.42);
+  stickPivot.position.set(0, -0.06, -1.54);
   cockpitGroup.add(stickPivot);
-  stickPivot.add(box(0.026, 0.30, 0.026, 0, 0.15, 0, stickMat));
-  stickPivot.add(box(0.048, 0.075, 0.040, 0, 0.315, 0, stickMat));
+  // Boot at the floor, shaft, then the grip.
+  stickPivot.add(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 0.05, 12),
+    new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.95 })));
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.021, 0.40, 10), stickMat);
+  shaft.position.y = 0.20;
+  stickPivot.add(shaft);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 0.125, 10), gripMat);
+  grip.position.set(0, 0.455, 0.012);
+  grip.rotation.x = -0.20;                       // canted back into the hand
+  stickPivot.add(grip);
+  const gripTop = new THREE.Mesh(new THREE.SphereGeometry(0.024, 10, 8), gripMat);
+  gripTop.position.set(0, 0.523, 0.001);
+  stickPivot.add(gripTop);
+  // A trigger-ish detail so it does not read as a plain rod.
+  stickPivot.add(box(0.016, 0.030, 0.016, 0, 0.430, -0.030, gripMat));
 
   // Throttle lever on the left rail
   const throttlePivot = new THREE.Group();
@@ -1284,6 +1313,14 @@ canvas { display: block; }
     const onTitle = !playing && !crashed;
     document.getElementById('hud').classList.toggle('titlescreen',
       onTitle || TRAILER || replaying);
+
+    // From inside, the aeroplane's own skin was filling the lower half of the
+    // view: the eye sits above the fuselage surface, so you were looking at
+    // the outside of the aircraft from within it. The cockpit has its own
+    // walls, floor and cowling, so the exterior shell comes off.
+    const inside = cockpitGroup.visible;
+    fuse.visible = !inside;
+    canopy.visible = !inside;
     if (CHALLENGE) {
       document.getElementById('challenge-banner').classList.toggle('hidden', onTitle);
     }
@@ -1764,7 +1801,12 @@ canvas { display: block; }
   }
 
   function updateTrailer(dt) {
-    if (shotIndex < 0) beginShot(0);
+    // ?shot=N opens on a particular shot, for looking at one without sitting
+    // through the ones before it.
+    if (shotIndex < 0) {
+      const want = parseInt(params.get('shot'), 10);
+      beginShot(Number.isFinite(want) ? Math.max(0, Math.min(SHOTS.length - 1, want)) : 0);
+    }
     const sh = SHOTS[shotIndex];
     shotTime += dt;
     trailerClock += dt;
