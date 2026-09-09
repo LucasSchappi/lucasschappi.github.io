@@ -205,7 +205,15 @@ async function main() {
   const cleanup = async () => {
     if (cleanupDone) return; cleanupDone = true;
     try { proc.kill(); } catch {}
-    if (!o.keep) await rm(profile, { recursive: true, force: true }).catch(() => {});
+    if (o.keep) return;
+    // Chrome is often still writing to its profile as it goes down, and a
+    // removal that lands mid-write fails with ENOTEMPTY and leaves the whole
+    // directory behind. These are tens of megabytes each and they add up.
+    for (let i = 0; i < 6; i++) {
+      await sleep(250);
+      try { await rm(profile, { recursive: true, force: true }); return; } catch {}
+    }
+    console.error('record-page: could not remove ' + profile);
   };
   process.on('SIGINT', async () => { await cleanup(); process.exit(130); });
 
