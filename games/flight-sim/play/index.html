@@ -800,8 +800,14 @@ canvas { display: block; }
      cabin that is actually modelled inside it - the middle one runs the length
      of the cockpit, from the windscreen at -1.95 to the bulkhead at -0.25. */
   const fuse = new THREE.Group();
+  /* Open-ended, all three. A capped cylinder has a flat disc at each end, and
+     where two sections meet those discs sit across the fuselage facing aft:
+     invisible edge-on from the side, but a pale rounded shape from directly
+     behind. That is what appeared under the belly from the chase, distant and
+     tail views and from nowhere else. */
   function tube(rFront, rRear, len, z) {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(rRear, rFront, len, 14), fuseMat);
+    const m = new THREE.Mesh(
+      new THREE.CylinderGeometry(rRear, rFront, len, 14, 1, true), fuseMat);
     m.rotation.x = Math.PI / 2;                 // +Y becomes +Z, so rTop is aft
     m.position.z = z;
     fuse.add(m);
@@ -810,6 +816,13 @@ canvas { display: block; }
   tube(0.44, 0.54, 1.60, -2.75);                // forward, behind the cowling
   tube(0.54, 0.54, 1.70, -1.10);                // under the cabin
   tube(0.54, 0.15, 3.55,  1.53);                // tail boom
+
+  // The one end that does need closing: the back of the tail boom. The nose
+  // end is inside the engine cowling.
+  const tailCap = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.30, 14), fuseMat);
+  tailCap.rotation.x = Math.PI / 2;
+  tailCap.position.z = 3.44;
+  fuse.add(tailCap);
   planeGroup.add(fuse);
 
   // Cockpit canopy (glass)
@@ -1763,15 +1776,15 @@ canvas { display: block; }
     // From here it is mostly flown from the aeroplane, because that is what
     // playing it looks like. The one outside shot left is the crash, which
     // there is no way to watch from inside.
-    { t: 'DAWN',   d: 4.5, cam: 'cockpit', alt: 60,  speed: 95,  turn: 0.10,  bank: 0.42, climb: 0, hud: true },
-    { t: 'MIDDAY', d: 4.0, cam: 'chase',   alt: 150, speed: 96,  turn: 0.18,  bank: 0.66, climb: 3, hud: true },
-    { t: 'MIDDAY', d: 3.5, cam: 'distant', alt: 260, speed: 94,  turn: -0.10, bank: -0.4, climb: -8, hud: true },
-    { t: 'MIDDAY', d: 3.5, cam: 'wing',    alt: 90,  speed: 98,  turn: -0.16, bank: -0.6, climb: 0, hud: true },
-    { t: 'MIDDAY', d: 4.0, cam: 'cockpit', alt: 70,  speed: 94,  turn: -0.05, bank: -0.2, climb: 14, hud: true },
-    { t: 'DUSK',   d: 3.5, cam: 'chase',   alt: 110, speed: 99,  turn: -0.20, bank: -0.7, climb: -4, hud: true },
-    { t: 'DUSK',   d: 3.5, cam: 'wing',    alt: 130, speed: 92,  turn: 0.14,  bank: 0.55, climb: -6, hud: true },
-    { t: 'DUSK',   d: 3.0, cam: 'orbit',   alt: 240, speed: 88,  turn: 0,     bank: 0.05, climb: 0 },
-    { t: 'NIGHT',  d: 3.5, cam: 'cockpit', alt: 120, speed: 96,  turn: 0.08,  bank: 0.3,  climb: 0, hud: true },
+    { t: 'DAWN',   d: 4.5, cam: 'cockpit', alt: 190, speed: 95,  bank: -0.06, bankTo: 0.62, climb: 0, hud: true },
+    { t: 'MIDDAY', d: 4.0, cam: 'chase',   alt: 210, speed: 96,  turn: 0.18,  bank: 0.66, climb: 3, hud: true },
+    { t: 'MIDDAY', d: 3.5, cam: 'distant', alt: 280, speed: 94,  turn: -0.10, bank: -0.4, climb: -8, hud: true },
+    { t: 'MIDDAY', d: 3.5, cam: 'wing',    alt: 200, speed: 98,  bank: 0.10, bankTo: -0.55, climb: 0, hud: true },
+    { t: 'MIDDAY', d: 4.0, cam: 'cockpit', alt: 200, speed: 94,  bank: 0.50, bankTo: -0.45, climb: 14, hud: true },
+    { t: 'DUSK',   d: 3.5, cam: 'chase',   alt: 220, speed: 99,  turn: -0.20, bank: -0.7, climb: -4, hud: true },
+    { t: 'DUSK',   d: 3.5, cam: 'wing',    alt: 210, speed: 92,  bank: -0.10, bankTo: 0.55, climb: -6, hud: true },
+    { t: 'DUSK',   d: 3.0, cam: 'distant', alt: 240, speed: 88,  bank: 0.30, bankTo: -0.30, climb: 0, hud: true },
+    { t: 'NIGHT',  d: 3.5, cam: 'cockpit', alt: 230, speed: 96,  bank: -0.40, bankTo: 0.45, climb: 0, hud: true },
     // Runs in level, pulls all the way round as though somebody were holding
     // S, rolls out and puts it into the hillside.
     { t: 'DUSK',   d: 7.5, cam: 'ground',  alt: 150, speed: 108, turn: 0.02,  bank: 0.18, climb: 0,
@@ -1813,6 +1826,12 @@ canvas { display: block; }
   }
 
   function bankAt(sh, t) {
+    if (!sh.loop && sh.bankTo !== undefined) {
+      // Roll from one bank to the other across the shot, so the world turns
+      // around the cockpit instead of sitting at a fixed tilt.
+      const u = Math.min(1, Math.max(0, t / sh.d));
+      return sh.bank + (sh.bankTo - sh.bank) * (u * u * (3 - 2 * u));
+    }
     if (!sh.loop) return sh.bank;
     // Wings level through the loop: a barrel roll is a different manoeuvre.
     const into = (t - sh.loop.at) / 0.5;
@@ -1930,9 +1949,11 @@ canvas { display: block; }
       }
     }
 
-    for (let lift = 0; lift < 40; lift++) {
+    // Capped: it is better to have a hill briefly in the way than to end up
+    // three hundred metres up with the aeroplane a speck in the distance.
+    for (let lift = 0; lift < 9; lift++) {
       if (pts.every(function (pt) { return canSee(cam, pt); })) return;
-      cam.y += 9;
+      cam.y += 7;
     }
   }
 
@@ -1993,10 +2014,16 @@ canvas { display: block; }
     } else {
       throttle = 0.78;
       airspeed = sh.speed;
-      tHeading += (sh.turn || 0) * dt;
-      _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
       tPitch = pitchAt(sh, shotTime);
       tBank = bankAt(sh, shotTime);
+      // A rolling shot turns because it is banked, the way an aeroplane does,
+      // rather than yawing at a rate set by hand: lift tilts with the wings
+      // and its sideways part is what pulls it round.
+      const rate = sh.bankTo !== undefined
+        ? 9.8 * Math.tan(tBank) / sh.speed
+        : (sh.turn || 0);
+      tHeading += rate * dt;
+      _tf.set(-Math.sin(tHeading), 0, -Math.cos(tHeading));
       if (sh.loop) {
         // Flown along the nose, so the loop actually goes over the top.
         noseVec(tHeading, tPitch, _nose);
@@ -2004,6 +2031,11 @@ canvas { display: block; }
       } else {
         tPos.addScaledVector(_tf, sh.speed * dt);
         tPos.y += (sh.climb || 0) * dt;
+        // `alt` is measured above the ground at the start, and the ground
+        // moves. Without this the aeroplane flew into hillsides part way
+        // through a shot.
+        const floor = heightAt(tPos.x, tPos.z) + (sh.clear || 90);
+        if (tPos.y < floor) tPos.y = floor;
       }
 
       const ground = heightAt(tPos.x, tPos.z);
@@ -3037,12 +3069,12 @@ canvas { display: block; }
   const VIEWS = [
     // Over the shoulder, level with the horizon, looking out ahead of the
     // aeroplane. This is the framing the trailer uses.
-    { name: 'CHASE',   fov: 70, offset: new THREE.Vector3(9, 9, 34), ahead: 24, rigid: false,
+    { name: 'CHASE',   fov: 70, offset: new THREE.Vector3(9, 3.6, 34), ahead: 24, rigid: false,
       level: true, zoomable: true, near: 0.5 },
     // Higher and further back. It used to aim twenty-five metres behind the
     // aeroplane, which pointed the camera steeply down and left the aeroplane
     // sitting near the top of the frame; aiming at the aeroplane centres it.
-    { name: 'DISTANT', fov: 70, offset: new THREE.Vector3(0, 7, 30), ahead: 0, rigid: false,
+    { name: 'DISTANT', fov: 70, offset: new THREE.Vector3(0, 3.2, 30), ahead: 0, rigid: false,
       zoomable: true, near: 0.5 },
     { name: 'COCKPIT', fov: 80, offset: EYE,                            ahead: 300, rigid: true,  near: 0.18 },
     { name: 'WING',    fov: 62, offset: new THREE.Vector3(7.4, 1.5, 1.8), ahead: 0, rigid: true,  near: 0.5 },
