@@ -325,6 +325,10 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
 .featured__note h2 { margin: 0 0 10px; }
 .featured__note p { margin: 0; color: var(--text-2); max-width: 46ch; }
 
+/* A poster that is a link to the game's own page, rather than a player. */
+a.play-embed__stage { display: block; text-decoration: none; color: inherit; }
+a.play-embed__stage:hover .btn { background: var(--accent-2, #1b4fd8); }
+
 /* Leaderboard -------------------------------------------------------------- */
 .board-intro { margin: 0 0 20px; color: var(--text-2); max-width: 62ch; }
 .board {

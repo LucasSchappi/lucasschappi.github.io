@@ -72,15 +72,18 @@
         <h2>Play in your browser</h2>
       </div>
 
-      <h3 style="margin-bottom:12px">3D Flight Sim</h3>
-      <div class="play-embed" data-play="/games/flight-sim/play/" data-play-title="3D Flight Sim">
-        <div class="play-embed__stage">
+      <!-- No data-play here: the flight sim has a page of its own now, with
+           the daily challenge and the leaderboard on it, so this leads there
+           rather than starting the game in this page and hiding all that. -->
+      <h3 style="margin-bottom:12px">Schappi&rsquo;s Flight Simulator</h3>
+      <div class="play-embed">
+        <a class="play-embed__stage" href="/games/flight-sim/">
           <img class="play-embed__art" src="/assets/img/flight-sim-cover.jpg?v=1" alt="" width="1600" height="913">
           <div class="play-embed__poster">
-            <a class="btn play-embed__start" href="/games/flight-sim/play/">Play in your browser</a>
-            <p>Runs in the page &mdash; nothing to install. Needs a keyboard and WebGL.</p>
+            <span class="btn">Open the flight sim</span>
+            <p>Its own page, with today&rsquo;s challenge and the leaderboard.</p>
           </div>
-        </div>
+        </a>
         <div class="play-embed__bar">
           <p class="play-embed__keys">
             <kbd>W</kbd>/<kbd>S</kbd> pitch &middot;
@@ -93,8 +96,7 @@
             <kbd>M</kbd> sound
           </p>
           <div class="btn-row">
-            <a class="btn btn--ghost btn--sm" href="/games/flight-sim/play/" data-fullscreen>Fullscreen</a>
-            <a class="btn btn--ghost btn--sm" href="/games/flight-sim/play/">Open on its own</a>
+            <a class="btn btn--ghost btn--sm" href="/games/flight-sim/play/">Skip to the game</a>
           </div>
         </div>
       </div>
