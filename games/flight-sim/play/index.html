@@ -318,6 +318,7 @@ canvas { display: block; }
   const WATER_Y = -1;                 // the surface, matching waterMesh
   const FLOAT_Y = WATER_Y + 1.0;      // where the hull rides
   const DITCH_SPEED = 70;             // gentler than this and it floats
+  const WATER_LIFTOFF = 85;           // and this much to get off again
   const _flatE = new THREE.Euler(0, 0, 0, 'YXZ');
   const _flatQ = new THREE.Quaternion();
   let runStart = 0;                   // when this attempt began, for timed runs
@@ -1563,7 +1564,9 @@ canvas { display: block; }
       if (keys['ControlLeft'] || keys['ControlRight']) throttle = Math.max(0, throttle - dt * 0.5);
     }
 
-    const thrustForce = throttle * 120;
+    // On the water the propeller is half in spray and the hull is dragging, so
+    // there is far less of the engine available than in the air.
+    const thrustForce = throttle * 120 * (ditched ? 0.30 : 1);
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(planeGroup.quaternion);
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(planeGroup.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(planeGroup.quaternion);
@@ -1649,13 +1652,26 @@ canvas { display: block; }
       const upright = Math.abs(up.dot(UP_Y)) > 0.85;
       if (!ditched && airspeed <= DITCH_SPEED && upright) {
         ditched = true;
-        toast('DITCHED \u2014 FLOATING');
+        toast('DITCHED \u2014 FULL THROTTLE TO GET OFF');
       }
       if (ditched) {
         planeGroup.position.y = FLOAT_Y;
         velocity.y = 0;
-        velocity.multiplyScalar(1 - 2.2 * dt);      // the water takes the way off
-        throttle = 0;
+
+        /* Hold it wide open and the aeroplane gets up onto the surface and
+           starts to plane, and the drag falls away; anything less and the
+           water simply takes the way off. A real landplane could never do
+           this - the wheels would dig in and put it on its back - but with
+           the throttle open it is a proper manoeuvre rather than a free
+           escape: about five seconds and a couple of hundred metres of open
+           water before it will unstick. */
+        const planing = throttle > 0.6;
+        velocity.multiplyScalar(1 - (planing ? 0.33 : 2.2) * dt);
+        if (planing && airspeed >= WATER_LIFTOFF) {
+          ditched = false;
+          velocity.y = 3;
+          toast('AIRBORNE');
+        }
         // Settle level, the way a hull sits in the water.
         planeGroup.quaternion.slerp(_flatQ.setFromEuler(
           _flatE.set(0, Math.atan2(-forward.x, -forward.z), 0, 'YXZ')), 1.6 * dt);
