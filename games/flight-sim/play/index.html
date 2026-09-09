@@ -1652,6 +1652,16 @@ canvas { display: block; }
        is also what keeps the lowest-death challenge possible: that one is won
        by diving through the surface to the sea bed. */
     const overWater = terrainH < WATER_Y - 0.1;
+
+    /* Being on the water switches off the ground collision, because the
+       ground there is the sea bed a long way down. So leaving the water has
+       to switch it back on: without this you could plane ashore still marked
+       as floating, pass straight through hillsides, climb away, and stay
+       invulnerable until you touched water again. */
+    if (ditched && (!overWater || planeGroup.position.y > FLOAT_Y + 0.6)) {
+      ditched = false;
+    }
+
     if (overWater && planeGroup.position.y < FLOAT_Y) {
       const upright = Math.abs(up.dot(UP_Y)) > 0.85;
       if (!ditched && airspeed <= DITCH_SPEED && upright) {
