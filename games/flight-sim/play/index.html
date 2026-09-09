@@ -314,6 +314,12 @@ canvas { display: block; }
   let elapsed = 0;
   let stalling = false;
   let glideCeiling = Infinity;        // dead stick: the height you may not exceed
+  let ditched = false;                // sitting on the water
+  const WATER_Y = -1;                 // the surface, matching waterMesh
+  const FLOAT_Y = WATER_Y + 1.0;      // where the hull rides
+  const DITCH_SPEED = 70;             // gentler than this and it floats
+  const _flatE = new THREE.Euler(0, 0, 0, 'YXZ');
+  const _flatQ = new THREE.Quaternion();
   let runStart = 0;                   // when this attempt began, for timed runs
 
   // ===== WORLD SEED =====
@@ -1628,7 +1634,34 @@ canvas { display: block; }
 
     // Ground collision
     const terrainH = heightAt(planeGroup.position.x, planeGroup.position.z);
-    if (planeGroup.position.y < terrainH + 2) {
+
+    /* Ditching. An aeroplane put down gently on water does float, for a few
+       minutes at least: the fuselage is fairly well sealed and the wing tanks
+       are full of air. A fixed-gear aeroplane like this one would usually
+       nose over when the wheels caught, which is not modelled - it settles
+       upright and stays there.
+       
+       Only a slow, level arrival floats. Anything faster goes through, which
+       is also what keeps the lowest-death challenge possible: that one is won
+       by diving through the surface to the sea bed. */
+    const overWater = terrainH < WATER_Y - 0.1;
+    if (overWater && planeGroup.position.y < FLOAT_Y) {
+      const upright = Math.abs(up.dot(UP_Y)) > 0.85;
+      if (!ditched && airspeed <= DITCH_SPEED && upright) {
+        ditched = true;
+        toast('DITCHED \u2014 FLOATING');
+      }
+      if (ditched) {
+        planeGroup.position.y = FLOAT_Y;
+        velocity.y = 0;
+        velocity.multiplyScalar(1 - 2.2 * dt);      // the water takes the way off
+        throttle = 0;
+        // Settle level, the way a hull sits in the water.
+        planeGroup.quaternion.slerp(_flatQ.setFromEuler(
+          _flatE.set(0, Math.atan2(-forward.x, -forward.z), 0, 'YXZ')), 1.6 * dt);
+      }
+    }
+    if (!ditched && planeGroup.position.y < terrainH + 2) {
       if (airspeed > 50 || Math.abs(up.dot(new THREE.Vector3(0,1,0))) < 0.85) {
         crashed = true; playing = false;
         stalling = false;
@@ -2087,7 +2120,7 @@ canvas { display: block; }
 
       if (sh.hud) {
         const hdg = ((-tHeading * 180 / Math.PI) % 360 + 360) % 360;
-        document.getElementById('v-speed').textContent = Math.floor(sh.speed * 1.94);
+        document.getElementById('v-speed').textContent = Math.floor(sh.speed);
         document.getElementById('v-alt').textContent = Math.floor(tPos.y * 3.28);
         document.getElementById('v-heading').textContent = Math.floor(hdg);
         document.getElementById('v-pitch').textContent = (tPitch * 180 / Math.PI).toFixed(1);
@@ -3426,6 +3459,7 @@ canvas { display: block; }
     planeGroup.quaternion.identity();
     velocity.set(0, 0, -START_SPEED);
     glideCeiling = START_ALT;
+    ditched = false;
     runStart = elapsed;
     repCount = 0;
     replaying = false;
