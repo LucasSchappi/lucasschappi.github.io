@@ -13,7 +13,7 @@ DEST="${1:-$HOME/code/schappistudios-aws-deploy/site}"
 rsync -a --delete \
   --exclude '.git/' --exclude '.gitignore' --exclude 'README.md' \
   --exclude 'serve.py' --exclude 'bin-sync-site.sh' \
-  --exclude 'docs/' \
+  --exclude 'docs/' --exclude 'tools/' \
   --exclude 'images-of-fire-arcade/' --exclude 'untitled folder/' \
   --exclude '.DS_Store' --exclude '.placeholder-backup/' \
   --exclude '_*' \
