@@ -1153,6 +1153,31 @@ canvas { display: block; }
   cockpitGroup.add(box(0.92, 0.04, 1.40, 0, -0.02, -1.35, wallMat));         // floor
   cockpitGroup.add(box(0.045, 0.075, 1.05, -0.435, 0.44, -1.30, trimMat));   // rails
   cockpitGroup.add(box(0.045, 0.075, 1.05,  0.435, 0.44, -1.30, trimMat));
+  /* Roof, rear bulkhead and door posts. Hiding the aeroplane's outer shell
+     from in here left the cabin open to the sky: it had a floor and walls up
+     to sill height and nothing above them. This is the rest of the cabin, with
+     the side windows left as openings between the posts. */
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.9, metalness: 0.05 });
+
+  const roof = box(0.90, 0.045, 1.20, 0, 0.975, -0.90, roofMat);
+  roof.rotation.x = -0.03;                      // follows the top of the screen
+  cockpitGroup.add(roof);
+
+  // Rails where the roof meets the sides.
+  cockpitGroup.add(box(0.05, 0.055, 1.20, -0.428, 0.945, -0.90, trimMat));
+  cockpitGroup.add(box(0.05, 0.055, 1.20,  0.428, 0.945, -0.90, trimMat));
+
+  // Only a rear door post each side: the windscreen posts are already the
+  // front ones, and a second pair beside them was scaffolding again. The
+  // window is the opening between the two.
+  [-0.432, 0.432].forEach(function (x) {
+    cockpitGroup.add(strut(x, 0.470, -0.400, x, 0.930, -0.380, 0.016, frameMat));
+  });
+
+  // Behind the seat.
+  cockpitGroup.add(box(0.90, 0.96, 0.05, 0, 0.45, -0.30, roofMat));
+  cockpitGroup.add(box(0.34, 0.20, 0.12, 0, 0.86, -0.36, trimMat));   // headrest
+
   // Deck over the nose, so you look along the aeroplane and not through it.
   const deck = box(0.88, 0.05, 1.75, 0, 0.30, -2.65, trimMat);
   deck.rotation.x = 0.045;
