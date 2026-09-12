@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Put the current files on schappistudios.com.
+#
+#   cd ~/code/SchappiStudios
+#   ./publish
+#
+# Committing to GitHub saves your work; it does not change the website. The
+# website is served from AWS, and this is what copies your files there.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# The AWS command lives here rather than in the usual place.
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v aws >/dev/null; then
+  echo "publish: can't find the 'aws' command, so nothing was uploaded." >&2
+  echo "         It should be at ~/.local/bin/aws" >&2
+  exit 1
+fi
+
+DEPLOY="$HOME/code/schappistudios-aws-deploy/bin/deploy"
+if [[ ! -x "$DEPLOY" ]]; then
+  echo "publish: can't find the deploy script at $DEPLOY" >&2
+  exit 1
+fi
+
+echo "1/2  copying your files..."
+./bin-sync-site.sh >/dev/null
+
+echo "2/2  uploading to the website (about a minute)..."
+"$DEPLOY" >/dev/null
+
+# Say plainly whether it worked, rather than leaving you to guess.
+want_css=$(md5 -q assets/css/site.css | cut -c1-8)
+want_js=$(md5 -q assets/js/site.js | cut -c1-8)
+live=$(curl -s "https://schappistudios.com/?nocache=$RANDOM" || true)
+
+if [[ "$live" == *"site.css?v=$want_css"* && "$live" == *"site.js?v=$want_js"* ]]; then
+  echo
+  echo "Done. schappistudios.com is now showing your latest files."
+  echo "If your browser still shows the old page, press Cmd-Shift-R."
+else
+  echo
+  echo "Uploaded, but the website is still serving the old files." >&2
+  echo "That is usually just the caches catching up - wait a minute and reload." >&2
+fi
