@@ -19,9 +19,9 @@
 <meta name="theme-color" content="#ffffff">
 
 <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/css/site.css?v=5">
+<link rel="stylesheet" href="/assets/css/site.css?v=7">
 </head>
-<body>
+<body class="home-page">
 <a class="skip-link" href="#main">Skip to content</a>
 <header class="site-header">
   <div class="wrap">
@@ -40,9 +40,21 @@
 </header>
 <main id="main">
 
-  <section class="hero hero--bare">
-    <div class="wrap">
-      <h1>Schappi Studios</h1>
+  <section class="hero studio-hero">
+    <div class="wrap studio-hero__layout">
+      <div>
+        <p class="studio-eyebrow">SCHAPPI STUDIOS / GAMES &amp; WEB SOFTWARE</p>
+        <h1>Schappi Studios</h1>
+        <p>We make browser games, simulations, and web software.</p>
+        <div class="btn-row">
+          <a class="btn" href="/games/">Explore the games <span aria-hidden="true">↗</span></a>
+          <a class="btn btn--ghost" href="/about/">About the studio</a>
+        </div>
+      </div>
+      <a class="studio-hero__preview" href="/games/flight-sim/" aria-label="Play Schappi’s Flight Simulator">
+        <img src="/assets/img/flight-sim-cover.jpg?v=1" alt="A light aircraft flying over a coastline" width="1600" height="913" fetchpriority="high">
+        <span class="studio-hero__caption"><span>Schappi’s Flight Simulator<small>Play in your browser</small></span><span aria-hidden="true">↗</span></span>
+      </a>
     </div>
   </section>
 
@@ -92,7 +104,9 @@
   <section class="section section--alt">
     <div class="wrap">
       <div class="section-head">
-        <h2>What we've made</h2>
+        <p class="studio-eyebrow">THE COLLECTION</p>
+        <h2>Our projects</h2>
+        <p>Games, simulations, and projects from Schappi Studios.</p>
       </div>
       <div class="card-grid">
 
@@ -112,13 +126,13 @@
         </article>
 
         <article class="card">
-          <div class="card__art"><!-- SLOT: Turret Showdown screenshot --></div>
+          <div class="card__art project-title-art" aria-hidden="true"><span>TS<small>TURRET SHOWDOWN</small></span></div>
           <div class="card__body">
             <div class="card__head">
               <h3>Turret Showdown</h3>
               <span class="tag">4 versions</span>
             </div>
-            <p class="card__desc"><span class="todo">[one line: what the player does]</span></p>
+            <p class="card__desc">Explore the Turret Showdown series across four versions.</p>
             <div class="card__foot">
               <span class="tag">Game</span>
               <a class="tlink stretch-link" href="/games/">Details</a>
@@ -127,13 +141,13 @@
         </article>
 
         <article class="card">
-          <div class="card__art"><!-- SLOT: Sheep and Tree World screenshot --></div>
+          <div class="card__art project-title-art project-title-art--world" aria-hidden="true"><span>STW<small>SHEEP AND TREE WORLD</small></span></div>
           <div class="card__body">
             <div class="card__head">
               <h3>Sheep and Tree World</h3>
               <span class="tag">2 versions</span>
             </div>
-            <p class="card__desc"><span class="todo">[one line: what the player does]</span></p>
+            <p class="card__desc">Find Sheep and Tree World and its two versions on itch.io.</p>
             <div class="card__foot">
               <span class="tag">itch.io</span>
               <a class="tlink stretch-link" href="https://schappi-plays.itch.io/sheep-and-tree-world">Play</a>
@@ -177,15 +191,11 @@
 
   <section class="section">
     <div class="wrap">
-      <div class="signup">
-        <h2>Get updates</h2>
-        <p>An email when something new ships. Nothing else.</p>
-        <form class="field-row" data-form action="" method="post">
-          <input type="email" name="email" placeholder="you@example.com"
-                 aria-label="Email address" autocomplete="email" required>
-          <button class="btn" type="submit">Join</button>
-        </form>
-        <p class="form-status" role="status"></p>
+      <div class="signup studio-follow">
+        <div><p class="studio-eyebrow">KEEP EXPLORING</p><h2>There’s more from the studio.</h2>
+        <p>Explore our releases on itch.io, or take a look at the website’s source.</p></div>
+        <div class="btn-row"><a class="btn" href="https://schappi-plays.itch.io/">Visit itch.io ↗</a>
+        <a class="btn btn--ghost" href="https://github.com/LucasSchappi/lucasschappi.github.io">View on GitHub ↗</a></div>
       </div>
     </div>
   </section>
@@ -199,7 +209,7 @@
           <img class="brand__mark" src="/assets/img/favicon.svg" alt="" width="22" height="22">
           Schappi Studios
         </a>
-        <!-- SLOT: one-line studio description -->
+        <p>Games, simulations, and web software.</p>
       </div>
 
       <div class="footer-col">
@@ -228,6 +238,6 @@
   </div>
 </footer>
 
-<script src="/assets/js/site.js?v=5" defer></script>
+<script src="/assets/js/site.js?v=6" defer></script>
 </body>
 </html>

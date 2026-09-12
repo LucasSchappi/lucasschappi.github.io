@@ -14,6 +14,21 @@
       document.body.classList.toggle("nav-open", !open);
     });
 
+    function closeNav() {
+      toggle.setAttribute("aria-expanded", "false");
+      nav.classList.remove("is-open");
+      document.body.classList.remove("nav-open");
+    }
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && toggle.getAttribute("aria-expanded") === "true") {
+        closeNav();
+        toggle.focus();
+      }
+    });
+    window.addEventListener("resize", function () {
+      if (window.innerWidth > 700) closeNav();
+    });
+
     nav.addEventListener("click", function (e) {
       if (e.target.closest("a")) {
         toggle.setAttribute("aria-expanded", "false");
