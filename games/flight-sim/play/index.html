@@ -315,6 +315,9 @@ canvas { display: block; }
   let stalling = false;
   let glideCeiling = Infinity;        // dead stick: the height you may not exceed
   let ditched = false;                // sitting on the water
+  const TURN_GAIN = 5.5;
+  const TURN_AXIS = new THREE.Vector3(0, 1, 0);
+  const _turnQ = new THREE.Quaternion();
   const WATER_Y = -1;                 // the surface, matching waterMesh
   const FLOAT_Y = WATER_Y + 1.0;      // where the hull rides
   const DITCH_SPEED = 70;             // gentler than this and it floats
@@ -1598,6 +1601,23 @@ canvas { display: block; }
     planeGroup.quaternion.premultiply(pitchQ);
     planeGroup.quaternion.premultiply(rollQ);
     planeGroup.quaternion.premultiply(yawQ);
+
+    /* Bank to turn. With the wings tilted, the lift holding the aeroplane up
+       is tilted with them, and its sideways part is what pulls it round: a
+       real aeroplane turns by leaning, not by steering. The rate is the
+       standard coordinated turn, g tan(bank) over speed, so a steeper bank or
+       a slower speed turns tighter.
+
+       Rolling used to do nothing but tilt the picture. The nose stayed where
+       it was and the aeroplane carried on in a straight line, which is why it
+       never felt like flying. */
+    const bankAngle = Math.atan2(right.y, up.y);
+    // The speeds in this model are not real metres per second, so the textbook
+    // rate comes out about six times too lazy: a half turn took a minute and a
+    // half. TURN_GAIN scales it to something that flies.
+    const turnRate = TURN_GAIN * Math.sin(bankAngle) * GRAVITY / Math.max(55, airspeed);
+    planeGroup.quaternion.premultiply(
+      _turnQ.setFromAxisAngle(TURN_AXIS, turnRate * dt));
     planeGroup.quaternion.normalize();
 
     const thrust = forward.clone().multiplyScalar(thrustForce * dt);
@@ -1622,11 +1642,14 @@ canvas { display: block; }
     const spd = velocity.length();
     if (spd > MAX_SPEED) velocity.multiplyScalar(MAX_SPEED / spd);
 
-    const slipDamp = 0.02;
+    // Some sideways drift is wanted - an aeroplane in a turn is not a train on
+    // rails - so the sideslip is damped rather than erased, and the velocity
+    // is swung towards the nose gently instead of being snapped onto it.
+    const slipDamp = 0.014;
     const rightVel = right.clone().multiplyScalar(velocity.dot(right) * slipDamp);
     velocity.sub(rightVel);
 
-    const alignRate = 0.03;
+    const alignRate = 0.018;
     velocity.lerp(forward.clone().multiplyScalar(spd), alignRate);
 
     planeGroup.position.add(velocity.clone().multiplyScalar(dt));

@@ -330,8 +330,13 @@ async function pngSink(o) {
 }
 
 async function readPort(profile) {
+  // Chrome can take a surprisingly long time to get this far on a machine
+  // that is short of memory - eleven seconds, measured, where the old limit
+  // was ten. Waiting longer costs nothing when it starts quickly.
   const file = join(profile, 'DevToolsActivePort');
-  for (let i = 0; i < 100; i++) {
+  const LIMIT_MS = 45000;
+  const started = Date.now();
+  while (Date.now() - started < LIMIT_MS) {
     try {
       const txt = await readFile(file, 'utf8');
       const port = Number(txt.split('\n')[0]);
@@ -339,7 +344,9 @@ async function readPort(profile) {
     } catch {}
     await sleep(100);
   }
-  throw new Error('Chrome never opened a debugging port');
+  throw new Error(
+    `Chrome did not open a debugging port within ${LIMIT_MS / 1000}s. ` +
+    'It is usually short of memory; closing some tabs or applications helps.');
 }
 
 async function fetchJson(url) {
